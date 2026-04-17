@@ -1,0 +1,27 @@
+{
+  "name": "agent-assert",
+  "version": "0.1.0",
+  "description": "A Playwright-based testing framework for agentic AI systems using MCP tool orchestration",
+  "author": "Biresh Patel",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:behavioral": "npx playwright test tests/behavioral/",
+    "test:boundary": "npx playwright test tests/boundary/",
+    "test:ollama": "LLM_PROVIDER=ollama npx playwright test",
+    "test:report": "npx playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "ajv": "^8.17.1",
+    "openai": "^4.104.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
