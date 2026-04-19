@@ -53,7 +53,7 @@ export default defineConfig({
   // Match files ending in .spec.ts
   testMatch: '**/*.spec.ts',
 
-  // Default cap; behavioral project overrides to 60s (multi-step LLM runs often need it).
+  // Default cap; behavioral project overrides for LLM + tool runs (see projects below).
   timeout: 45_000,
 
   // NON-DETERMINISM STRATEGY: Retry each failed test once.
@@ -93,8 +93,8 @@ export default defineConfig({
     {
       name: 'behavioral',
       testDir: './tests/behavioral',
-      // Multi-tool / multi-round agent runs often exceed 30s (local LLMs, variance).
-      timeout: 60_000,
+      // Local LLMs on CPU (e.g. Ollama in CI) often need >60s per test; multi-round runs add more.
+      timeout: 120_000,
     },
     {
       name: 'boundary',

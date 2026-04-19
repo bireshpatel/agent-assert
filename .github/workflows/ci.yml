@@ -8,6 +8,10 @@
 # llama3.2:3b is a good CI default: small/fast on CPU, much more reliable tool-calling than 1b.
 #
 # Fork PRs: the test job is skipped (secrets/vars from the base repo are not available to workflows from forks).
+#
+# Manual run (Actions → CI → Run workflow):
+#   • GitHub shows "Use workflow from" — pick the branch there (that version of the workflow runs).
+#   • Optional: set "Checkout ref" below only if you need a different ref than the branch picker.
 
 name: CI
 
@@ -17,6 +21,12 @@ on:
   pull_request:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: 'Optional — branch name or refs/heads/... to checkout. Leave empty to use the branch selected in "Use workflow from" above.'
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -28,6 +38,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.checkout_ref != '' && github.event.inputs.checkout_ref || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -57,6 +69,8 @@ jobs:
       OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.checkout_ref != '' && github.event.inputs.checkout_ref || github.ref }}
 
       - uses: actions/setup-node@v4
         with:

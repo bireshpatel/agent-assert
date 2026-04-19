@@ -290,6 +290,8 @@ Playwright loads **`tests/env-llm.ts`** from **`playwright.config.ts`** (`applyL
 
 **Best practice:** put **non-sensitive** values under **Variables**. Use **Secrets** for **`OLLAMA_API_KEY`** and other keys. Storing `LLM_MODEL` as a *secret* works but **masks** it in logs—prefer **Variables** for model name unless needed. If neither Variable nor Secret is set for provider/model, CI defaults to **`ollama`** + **`llama3.2:3b`** (local, no key; stronger tool-calling than `1b`).
 
+**Run CI on a chosen branch:** **Actions** → **CI** → **Run workflow**. GitHub shows **Use workflow from** — that dropdown is the branch selector for manual runs (the workflow file and checkout use that branch unless you override). Optionally fill **Checkout ref** in the form to checkout a different branch or full ref (e.g. `refs/heads/feature/x`).
+
 **Local vs Cloud tags:** tags like `llama3.2:3b` run fully locally. Tags ending in **`:cloud`** need **`OLLAMA_API_KEY`** in Secrets. Override **`LLM_MODEL`** in Variables if you want another local model (e.g. newer builds when Ollama adds them).
 
 ---
@@ -297,7 +299,7 @@ Playwright loads **`tests/env-llm.ts`** from **`playwright.config.ts`** (`applyL
 ### playwright.config.ts (high level)
 
 - **`retries: 1`** — each failed test runs one more time (LLM outputs vary)
-- **Timeouts:** default **45s**; **`behavioral`** project **60s** (multi-step runs); **`boundary`** **45s**
+- **Timeouts:** default **45s**; **`behavioral`** project **120s** (LLM + tools, slow on CPU/Ollama in CI); **`boundary`** **45s**
 - **`trace: 'off'`** — browser-style Playwright traces are disabled (this suite does not use a browser). Failures still get rich attachments from **`registerAgentTraceForDiagnostics`** in `tests/fixtures/setup.ts` (see below)
 - **`workers: 3`** — tune for your API rate limits
 - **HTML report `title`** — includes resolved LLM provider and model for quick scanning
@@ -458,8 +460,8 @@ Each test run calls a real LLM API. Costs depend on provider and model.
 
 ## Troubleshooting
 
-**Tests timeout (>60s):**
-LLM APIs can be slow. Increase `timeout` in `playwright.config.ts`. Check your API key is valid for the chosen provider (`LLM_PROVIDER` / `AgentConfig.provider`). Check rate limits.
+**Tests timeout (behavioral tests use 120s):**
+LLM APIs and local Ollama on CPU can be slow (especially in GitHub Actions). Adjust `timeout` under the **`behavioral`** project in `playwright.config.ts`. Check your API key / provider. For Ollama in CI, ensure the model is pulled before tests and the runner has enough RAM.
 
 **Tests are flaky (pass sometimes, fail sometimes):**
 This is expected with LLM testing. Three strategies:
