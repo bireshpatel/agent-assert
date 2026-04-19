@@ -279,7 +279,17 @@ Helpers:
 
 Playwright loads **`tests/env-llm.ts`** from **`playwright.config.ts`** (`applyLlmVarsFromDotEnv()`). Selected keys from a project-root **`.env`** file are merged into `process.env` (`.env` wins over existing shell vars for those keys): `LLM_PROVIDER`, `LLM_MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OLLAMA_API_KEY`, `OLLAMA_BASE_URL`. Copy **`.env.example`** to **`.env`** and fill in keys so tests and IDE runs see the same configuration without exporting variables manually.
 
-**GitHub Actions CI** (`.github/workflows/ci.yml`) installs Ollama, pulls a **small local model** (`llama3.2:1b` by default), and runs the smoke test using only **`LLM_PROVIDER`** + **`LLM_MODEL`** (no API key). Use a local tag in CI; `*:cloud` models may need separate Ollama Cloud setup.
+**GitHub Actions CI** (`.github/workflows/ci.yml`) installs Ollama, pulls the configured model, and runs the smoke test. **Provider, model, and optional base URL** are read from repository **Variables** or **Secrets** (no code change):
+
+| Name | Purpose |
+|------|--------|
+| `LLM_PROVIDER` | e.g. `ollama` |
+| `LLM_MODEL` | e.g. `llama3.2:3b` (more stable than `1b` for tools) |
+| `OLLAMA_BASE_URL` | Optional; default `http://127.0.0.1:11434/v1` |
+
+**Best practice:** put **non-sensitive** values under **Settings → Secrets and variables → Actions → Variables**. Reserve **Secrets** for API keys (`OPENAI_API_KEY`, etc.). Storing `LLM_MODEL` as a *secret* works but **masks the value in logs**, which makes debugging harder—prefer **Variables** for provider/model unless your org requires otherwise. If neither Variable nor Secret is set, CI uses **`ollama`** + **`llama3.2:1b`**.
+
+Use a **local** model tag in CI; `*:cloud` tags may need extra Ollama Cloud setup.
 
 ---
 

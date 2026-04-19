@@ -1,7 +1,12 @@
-# CI: typecheck + smoke test via local Ollama (only LLM_PROVIDER + LLM_MODEL; no API key).
-# Uses a small local model by default — fine on GitHub-hosted runners without GPU.
+# CI: typecheck + smoke test via local Ollama.
 #
-# Fork PRs: the test job is skipped (secrets are not available to workflows from forks).
+# Configure without editing this file (repo → Settings → Secrets and variables → Actions):
+#   • Variables (recommended for provider/model): LLM_PROVIDER, LLM_MODEL, optional OLLAMA_BASE_URL
+#   • Secrets: only for real secrets (API keys). You *may* set LLM_* as secrets, but Values are masked in logs.
+#
+# Defaults if unset: ollama + llama3.2:1b + http://127.0.0.1:11434/v1
+#
+# Fork PRs: the test job is skipped (secrets/vars from the base repo are not available to workflows from forks).
 
 name: CI
 
@@ -44,10 +49,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      LLM_PROVIDER: ollama
-      # Small local model (runs on CPU; no Ollama Cloud / API key). Change here or set env in the smoke step only.
-      LLM_MODEL: llama3.2:1b
-      OLLAMA_BASE_URL: http://127.0.0.1:11434/v1
+      # secrets.* overrides vars.* (both optional); fallbacks keep CI working if nothing is configured.
+      LLM_PROVIDER: ${{ secrets.LLM_PROVIDER || vars.LLM_PROVIDER || 'ollama' }}
+      LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || 'llama3.2:1b' }}
+      OLLAMA_BASE_URL: ${{ secrets.OLLAMA_BASE_URL || vars.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1' }}
     steps:
       - uses: actions/checkout@v4
 
