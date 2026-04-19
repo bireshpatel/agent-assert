@@ -1,7 +1,7 @@
 /**
- * agent/agent.ts
+ * examples/agent/agent.ts
  *
- * THE AGENT — the System Under Test (SUT)
+ * Demo agent — reference system under test for this POC (not the assertion library).
  *
  * WHAT IT DOES:
  * 1. Takes a natural language task from the user
@@ -26,7 +26,7 @@ import {
   AgentOutput,
   TraceStep,
   ToolResult,
-} from './types.js';
+} from '../../framework/types.js';
 
 /** Which vendor API backs the agent. `ollama` uses the OpenAI SDK against a local Ollama server. */
 export type LlmProvider = 'anthropic' | 'openai' | 'ollama';

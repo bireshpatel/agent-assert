@@ -45,7 +45,7 @@ import {
   teardownFixtureFiles,
 } from '../fixtures/setup.js';
 import { FAILURE_PROMPTS } from '../fixtures/prompts.js';
-import type { AgentTrace } from '../../agent/types.js';
+import type { AgentTrace } from '../../framework/types.js';
 
 /** True if the trace records a failed file-reader tool result (upstream failure actually happened). */
 function hasFileReaderToolFailure(trace: AgentTrace): boolean {

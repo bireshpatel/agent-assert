@@ -1,5 +1,5 @@
 /**
- * agent/tools/file-reader.ts
+ * examples/agent/tools/file-reader.ts
  * 
  * MCP TOOL #1: File Reader
  * 
@@ -33,7 +33,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { ToolDefinition, ToolResult } from '../types.js';
+import { ToolDefinition, ToolResult } from '../../../framework/types.js';
 
 /**
  * Creates a file-reader tool instance.

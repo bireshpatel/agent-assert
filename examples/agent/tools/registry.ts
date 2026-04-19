@@ -1,5 +1,5 @@
 /**
- * agent/tools/registry.ts
+ * examples/agent/tools/registry.ts
  * 
  * TOOL REGISTRY
  * 
@@ -22,7 +22,7 @@
  */
 
 import type OpenAI from 'openai';
-import { ToolDefinition, ToolResult } from '../types.js';
+import { ToolDefinition, ToolResult } from '../../../framework/types.js';
 
 export class ToolRegistry {
   private tools: Map<string, ToolDefinition> = new Map();

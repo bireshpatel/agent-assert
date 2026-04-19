@@ -39,7 +39,7 @@
  */
 
 import { expect } from '@playwright/test';
-import { AgentTrace, ContractDefinition, MatchResult } from '../agent/types.js';
+import { AgentTrace, ContractDefinition, MatchResult } from './types.js';
 import { HeuristicContractMatcher } from './HeuristicContractMatcher.js';
 
 export class AgentAssert {

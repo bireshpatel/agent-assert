@@ -38,7 +38,7 @@
  * forbidden 25%. Forbidden violations force a failed match regardless of headline confidence.
  */
 
-import { ContractDefinition, MatchResult } from '../agent/types.js';
+import { ContractDefinition, MatchResult } from './types.js';
 
 export class HeuristicContractMatcher {
   /**

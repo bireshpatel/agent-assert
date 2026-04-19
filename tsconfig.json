@@ -7,6 +7,7 @@
     "strict": true,
     "outDir": "./dist",
     "rootDir": ".",
+    "baseUrl": ".",
     "declaration": true,
     "sourceMap": true,
     "resolveJsonModule": true,
@@ -14,9 +15,10 @@
     "forceConsistentCasingInFileNames": true,
     "paths": {
       "@framework/*": ["./framework/*"],
-      "@agent/*": ["./agent/*"]
+      "@agent/*": ["./examples/agent/*"],
+      "agent-assert": ["./index.ts"]
     }
   },
-  "include": ["agent/**/*.ts", "framework/**/*.ts", "tests/**/*.ts"],
+  "include": ["index.ts", "framework/**/*.ts", "examples/**/*.ts", "tests/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

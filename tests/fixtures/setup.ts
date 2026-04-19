@@ -30,11 +30,11 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { test, type TestInfo } from '@playwright/test';
 import { applyLlmVarsFromDotEnv } from '../env-llm.js';
-import type { AgentTrace } from '../../agent/types.js';
-import { Agent, type AgentConfig } from '../../agent/agent.js';
-import { ToolRegistry } from '../../agent/tools/registry.js';
-import { createFileReaderTool } from '../../agent/tools/file-reader.js';
-import { createApiCallerTool, MockResponse } from '../../agent/tools/api-caller.js';
+import type { AgentTrace } from '../../framework/types.js';
+import { Agent, type AgentConfig } from '../../examples/agent/agent.js';
+import { ToolRegistry } from '../../examples/agent/tools/registry.js';
+import { createFileReaderTool } from '../../examples/agent/tools/file-reader.js';
+import { createApiCallerTool, MockResponse } from '../../examples/agent/tools/api-caller.js';
 
 applyLlmVarsFromDotEnv();
 

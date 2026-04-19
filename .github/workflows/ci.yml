@@ -1,9 +1,8 @@
-# CI: TypeScript typecheck + Playwright agent tests against OpenAI (API key from repo secrets).
+# CI: typecheck + smoke test via local Ollama using model deepseek-v3.2:cloud (matches .env-style config).
 #
-# Required secret (Settings → Secrets and variables → Actions):
-#   OPENAI_API_KEY   — your OpenAI API key
-#
-# Optional: set repository variable LLM_MODEL (e.g. gpt-4o-mini) or edit the env block below.
+# Secrets (Settings → Secrets and variables → Actions):
+#   OLLAMA_API_KEY — recommended for Ollama *cloud* models (create at https://ollama.com/settings/keys ).
+#                    Cloud models may fail to pull/run without it.
 #
 # Fork PRs: the test job is skipped (secrets are not available to workflows from forks).
 
@@ -46,11 +45,12 @@ jobs:
       (github.event_name == 'pull_request' &&
         github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      LLM_PROVIDER: openai
-      LLM_MODEL: gpt-4o-mini
+      LLM_PROVIDER: ollama
+      LLM_MODEL: deepseek-v3.2:cloud
+      OLLAMA_BASE_URL: http://127.0.0.1:11434/v1
+      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -65,8 +65,33 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Run Playwright tests
-        run: npm test
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh
+
+      # Use nohup (not systemd) so this process inherits job env, including OLLAMA_API_KEY for cloud models.
+      - name: Start Ollama and wait for API
+        run: |
+          set -e
+          sudo systemctl stop ollama 2>/dev/null || true
+          nohup ollama serve > /tmp/ollama-serve.log 2>&1 &
+          echo "Waiting for http://127.0.0.1:11434 ..."
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+              echo "Ollama is ready (after ${i}s)"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "--- ollama serve log ---"
+          cat /tmp/ollama-serve.log || true
+          exit 1
+
+      - name: Pull Ollama model (deepseek-v3.2:cloud)
+        timeout-minutes: 30
+        run: ollama pull deepseek-v3.2:cloud
+
+      - name: Smoke test (single LLM case)
+        run: npm run test:smoke
 
       - name: Upload Playwright report (on failure)
         if: failure()

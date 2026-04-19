@@ -17,6 +17,9 @@ const DOTENV_KEYS = new Set([
   'LLM_MODEL',
   'OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',
+  /** Ollama cloud models often need this; also picked up by `ollama` CLI when set in the shell. */
+  'OLLAMA_API_KEY',
+  'OLLAMA_BASE_URL',
 ]);
 
 export function applyLlmVarsFromDotEnv(): void {

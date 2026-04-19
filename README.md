@@ -1,6 +1,19 @@
 # AgentAssert
 
-**A Playwright-based testing framework for agentic AI systems with MCP-compatible tool schemas and in-process tool orchestration.**
+**Proof-of-concept:** Playwright tests + reusable assertion helpers for tool-calling LLM agents (MCP-shaped tool schemas, in-process tools in the demo).
+
+This repository is **`"private": true`** in `package.json` — it is **not** published to npm and is **not** a productized “framework.” It is a **reference implementation** you can clone, read, and copy from. A clean entry point exists for imports (`index.ts` → `framework/`), but publishing a real package would add build steps, versioning, and semver guarantees — out of scope for this POC.
+
+---
+
+## Repository layout
+
+| Path | Role |
+|------|------|
+| **`framework/`** | Reusable assertions (`AgentAssert`, `HeuristicContractMatcher`, `BehaviorContract`) and **shared types** (`framework/types.ts` — traces, contracts, tool shapes). |
+| **`index.ts`** | Barrel export so you can `import { AgentAssert, … } from 'agent-assert'` when vendoring this repo. |
+| **`examples/agent/`** | **Demo system under test:** LLM loop, `ToolRegistry`, file-reader / api-caller tools. Replace with your own agent; keep compatible `AgentTrace` / `AgentOutput` shapes if you reuse the assertions. |
+| **`tests/`** | Playwright specs and fixtures wired to the demo agent via `tests/fixtures/setup.ts`. |
 
 ---
 
@@ -19,7 +32,7 @@ The deliberate use of Playwright (not Jest, not Vitest) as the test runner is it
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    YOUR TEST FILE                       │
-│  import { AgentAssert } from '../../framework/AgentAssert.js' │
+│  import { AgentAssert } from 'agent-assert'  // or ../../framework/AgentAssert.js │
 │  const trace = await agent.run("some prompt")           │
 │  AgentAssert.toolWasInvoked(trace, 'file-reader')       │
 │  AgentAssert.satisfiesContract(trace.output, CONTRACT)    │
@@ -189,16 +202,14 @@ AgentAssert.expectMatched(
 
 ## Key Files Explained
 
-### agent/types.ts
-Every type definition. Read this first — everything else depends on these types.
+### framework/types.ts
+Shared types for traces, contracts, and (in the demo) tool definitions. Assertions and `examples/agent/` both import from here so the SUT and matchers stay aligned.
 
-- `AgentTrace` — the backbone. Every assertion operates on traces.
-- `TraceStep` — one decision the agent made (tool_call, tool_result, reasoning, output)
-- `ContractDefinition` — heuristic rules for “correct” when wording varies between runs
-- `MatchResult` — what assertions return (confidence score + details)
+- `AgentTrace` — what assertions operate on
+- `TraceStep`, `AgentOutput`, `ContractDefinition`, `MatchResult`, `ToolDefinition`, …
 
-### agent/agent.ts
-The System Under Test. The tool-calling loop is the core pattern:
+### examples/agent/agent.ts
+**Demo system under test** — not part of the reusable assertion layer. The tool-calling loop is the reference pattern:
 
 1. Send prompt + tool definitions to **Anthropic Messages API** or **OpenAI Chat Completions** (see `AgentConfig.provider`)
 2. The model responds with text and/or tool calls (`tool_use` vs `function` / `tool_calls` depending on provider)
@@ -211,12 +222,12 @@ The System Under Test. The tool-calling loop is the core pattern:
 
 **Important:** The system prompt in this file shapes agent behavior. If you change it, update the test contracts to match.
 
-### agent/tools/file-reader.ts and api-caller.ts
-Tools use MCP-aligned JSON schemas and register through **`ToolRegistry`**. In this POC they run locally (file-reader reads from disk, api-caller uses mock responses). To connect them to a real MCP server, replace the `execute` function with MCP transport calls — the schema stays the same.
+### examples/agent/tools/file-reader.ts and api-caller.ts
+Demo tools use MCP-aligned JSON schemas and register through **`ToolRegistry`**. In this POC they run locally (file-reader reads from disk, api-caller uses mock responses). To connect them to a real MCP server, replace the `execute` function with MCP transport calls — the schema stays the same.
 
 **Security note:** `file-reader.ts` includes path traversal protection. Read the comments.
 
-### agent/tools/registry.ts
+### examples/agent/tools/registry.ts
 Maps tool names to definitions. Provides `toAnthropicTools()` and `toOpenAITools()` so the same tool definitions work with either API. This is the bridge between your tool definitions and the LLM.
 
 ### framework/HeuristicContractMatcher.ts
@@ -266,7 +277,9 @@ Helpers:
 
 ### tests/env-llm.ts and `.env`
 
-Playwright loads **`tests/env-llm.ts`** from **`playwright.config.ts`** (`applyLlmVarsFromDotEnv()`). Selected keys from a project-root **`.env`** file are merged into `process.env` (`.env` wins over existing shell vars for those keys): `LLM_PROVIDER`, `LLM_MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. Copy **`.env.example`** to **`.env`** and fill in keys so tests and IDE runs see the same configuration without exporting variables manually.
+Playwright loads **`tests/env-llm.ts`** from **`playwright.config.ts`** (`applyLlmVarsFromDotEnv()`). Selected keys from a project-root **`.env`** file are merged into `process.env` (`.env` wins over existing shell vars for those keys): `LLM_PROVIDER`, `LLM_MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OLLAMA_API_KEY`, `OLLAMA_BASE_URL`. Copy **`.env.example`** to **`.env`** and fill in keys so tests and IDE runs see the same configuration without exporting variables manually.
+
+**GitHub Actions CI** (`.github/workflows/ci.yml`) installs Ollama, pulls **`deepseek-v3.2:cloud`**, and runs the smoke test. Add repository secret **`OLLAMA_API_KEY`** (from [ollama.com/settings/keys](https://ollama.com/settings/keys)) so cloud models can pull and run in headless CI.
 
 ---
 
@@ -364,7 +377,7 @@ npx playwright show-report
 ## How to Extend
 
 ### Add a New Tool
-1. Create `agent/tools/your-tool.ts` following the same factory pattern as `file-reader.ts`
+1. Create `examples/agent/tools/your-tool.ts` following the same factory pattern as `file-reader.ts`
 2. Register it in the ToolRegistry in your test setup
 3. Add mock responses in `setup.ts`
 4. Write tests using `AgentAssert.toolWasInvoked(trace, 'your-tool')`
@@ -384,7 +397,7 @@ npx playwright show-report
 5. Include detailed reasons in the `details` array
 
 ### Adapt for Another LLM Provider (beyond Anthropic, OpenAI, and Ollama)
-1. Add a branch in `agent/agent.ts` alongside the existing Anthropic and OpenAI-compatible loops
+1. Add a branch in `examples/agent/agent.ts` alongside the existing Anthropic and OpenAI-compatible loops
 2. Add a `toYourProviderTools()` (or equivalent) on `ToolRegistry` if the tool schema differs
 3. Map that provider’s tool-call and tool-result messages into the same `TraceStep` shapes the framework already expects
 4. The framework layer (AgentAssert, HeuristicContractMatcher, BehaviorContract) stays UNCHANGED — it operates on `AgentTrace`, which is provider-agnostic

@@ -1,5 +1,5 @@
 /**
- * agent/tools/api-caller.ts
+ * examples/agent/tools/api-caller.ts
  * 
  * MCP TOOL #2: API Caller
  * 
@@ -27,7 +27,7 @@
  * - Connect to your actual Jira/ServiceNow/Datadog APIs
  */
 
-import { ToolDefinition, ToolResult } from '../types.js';
+import { ToolDefinition, ToolResult } from '../../../framework/types.js';
 
 /**
  * Configuration for the API caller.
