@@ -35,6 +35,14 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ToolDefinition, ToolResult } from '../../../framework/types.js';
 
+/** Small / weak models sometimes omit `filePath` or use snake_case — normalize before resolve(). */
+function pickFilePath(input: Record<string, unknown>): string | undefined {
+  const raw = input.filePath ?? input.file_path ?? input.path;
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  if (raw != null && typeof raw !== 'object') return String(raw).trim() || undefined;
+  return undefined;
+}
+
 /**
  * Creates a file-reader tool instance.
  * 
@@ -96,7 +104,16 @@ export function createFileReaderTool(basePath: string = '/tmp/agent-files'): Too
      * The path.resolve + startsWith check below prevents this.
      */
     execute: async (input: Record<string, unknown>): Promise<ToolResult> => {
-      const filePath = input.filePath as string;
+      const filePath = pickFilePath(input);
+      if (!filePath) {
+        return {
+          success: false,
+          data: null,
+          error:
+            'Missing file path. Pass filePath as a string (e.g. "logs/test-results.log").',
+        };
+      }
+
       const encoding = (input.encoding as BufferEncoding) || 'utf-8';
 
       // SECURITY: Resolve the full path and verify it's within basePath.
