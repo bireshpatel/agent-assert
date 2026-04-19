@@ -137,7 +137,7 @@ function resolveAgentConfig(config: AgentConfig): ResolvedAgentConfig {
     provider === 'openai'
       ? 'gpt-4o'
       : provider === 'ollama'
-        ? 'llama3:latest'
+        ? 'llama3.2:3b'
         : 'claude-sonnet-4-20250514';
 
   return {

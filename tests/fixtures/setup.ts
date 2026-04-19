@@ -218,7 +218,7 @@ test.afterEach(async ({}, testInfo) => {
 /**
  * Optional env-driven overrides for which LLM to use in tests.
  * - `LLM_PROVIDER=openai` + `OPENAI_API_KEY` — OpenAI cloud (default model `gpt-4o` unless `LLM_MODEL`).
- * - `LLM_PROVIDER=ollama` — local Ollama (OpenAI-compatible API); default model `llama3:latest` unless `LLM_MODEL`.
+ * - `LLM_PROVIDER=ollama` — local Ollama (OpenAI-compatible API); default model `llama3.2:3b` unless `LLM_MODEL`.
  * - `LLM_PROVIDER=openai` + `OPENAI_BASE_URL` (e.g. `http://127.0.0.1:11434/v1`) — same as Ollama without renaming provider.
  * - Default when unset: Anthropic with `claude-sonnet-4-20250514` unless `LLM_MODEL` overrides.
  */

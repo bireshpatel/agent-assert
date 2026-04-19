@@ -284,12 +284,13 @@ Playwright loads **`tests/env-llm.ts`** from **`playwright.config.ts`** (`applyL
 | Name | Purpose |
 |------|--------|
 | `LLM_PROVIDER` | e.g. `ollama` |
-| `LLM_MODEL` | e.g. `llama3.2:3b` (more stable than `1b` for tools) |
+| `LLM_MODEL` | e.g. `llama3.2:3b` or `deepseek-v3.2:cloud` |
 | `OLLAMA_BASE_URL` | Optional; default `http://127.0.0.1:11434/v1` |
+| `OLLAMA_API_KEY` | **Repository secret** — required when `LLM_MODEL` is an Ollama **Cloud** tag (`*:cloud`). Without it, Ollama returns **HTTP 500**. [Create a key](https://ollama.com/settings/keys). |
 
-**Best practice:** put **non-sensitive** values under **Settings → Secrets and variables → Actions → Variables**. Reserve **Secrets** for API keys (`OPENAI_API_KEY`, etc.). Storing `LLM_MODEL` as a *secret* works but **masks the value in logs**, which makes debugging harder—prefer **Variables** for provider/model unless your org requires otherwise. If neither Variable nor Secret is set, CI uses **`ollama`** + **`llama3.2:1b`**.
+**Best practice:** put **non-sensitive** values under **Variables**. Use **Secrets** for **`OLLAMA_API_KEY`** and other keys. Storing `LLM_MODEL` as a *secret* works but **masks** it in logs—prefer **Variables** for model name unless needed. If neither Variable nor Secret is set for provider/model, CI defaults to **`ollama`** + **`llama3.2:3b`** (local, no key; stronger tool-calling than `1b`).
 
-Use a **local** model tag in CI; `*:cloud` tags may need extra Ollama Cloud setup.
+**Local vs Cloud tags:** tags like `llama3.2:3b` run fully locally. Tags ending in **`:cloud`** need **`OLLAMA_API_KEY`** in Secrets. Override **`LLM_MODEL`** in Variables if you want another local model (e.g. newer builds when Ollama adds them).
 
 ---
 

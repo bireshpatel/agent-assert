@@ -40,7 +40,7 @@ function htmlReportTitle(): string {
     provider === 'openai'
       ? 'gpt-4o'
       : provider === 'ollama'
-        ? 'llama3:latest'
+        ? 'llama3.2:3b'
         : 'claude-sonnet-4-20250514';
   const model = process.env.LLM_MODEL?.trim() || defaultModel;
   return `Playwright report · LLM: ${provider} · ${model}`;

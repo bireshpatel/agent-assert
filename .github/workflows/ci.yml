@@ -1,10 +1,11 @@
 # CI: typecheck + smoke test via local Ollama.
 #
 # Configure without editing this file (repo → Settings → Secrets and variables → Actions):
-#   • Variables (recommended for provider/model): LLM_PROVIDER, LLM_MODEL, optional OLLAMA_BASE_URL
-#   • Secrets: only for real secrets (API keys). You *may* set LLM_* as secrets, but Values are masked in logs.
+#   • Variables: LLM_PROVIDER, LLM_MODEL, optional OLLAMA_BASE_URL
+#   • Secret OLLAMA_API_KEY — only if you set LLM_MODEL to an Ollama *Cloud* tag (*:cloud).
 #
-# Defaults if unset: ollama + llama3.2:1b + http://127.0.0.1:11434/v1
+# Defaults if unset (all local, no API key): ollama + llama3.2:3b + http://127.0.0.1:11434/v1
+# llama3.2:3b is a good CI default: small/fast on CPU, much more reliable tool-calling than 1b.
 #
 # Fork PRs: the test job is skipped (secrets/vars from the base repo are not available to workflows from forks).
 
@@ -51,8 +52,9 @@ jobs:
     env:
       # secrets.* overrides vars.* (both optional); fallbacks keep CI working if nothing is configured.
       LLM_PROVIDER: ${{ secrets.LLM_PROVIDER || vars.LLM_PROVIDER || 'ollama' }}
-      LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || 'llama3.2:1b' }}
+      LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || 'llama3.2:3b' }}
       OLLAMA_BASE_URL: ${{ secrets.OLLAMA_BASE_URL || vars.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1' }}
+      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -66,6 +68,21 @@ jobs:
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
+
+      - name: Ollama Cloud models need OLLAMA_API_KEY
+        run: |
+          case "$LLM_MODEL" in
+            *:cloud*)
+              if [ -z "${OLLAMA_API_KEY}" ]; then
+                echo "::error title=Missing OLLAMA_API_KEY::Models tagged *:cloud use Ollama Cloud. Add repository secret OLLAMA_API_KEY (https://ollama.com/settings/keys). Or use a local tag (e.g. llama3.2:3b) in Variables."
+                exit 1
+              fi
+              echo "OLLAMA_API_KEY is set for Cloud model."
+              ;;
+            *)
+              echo "LLM_MODEL=$LLM_MODEL (local tag — OLLAMA_API_KEY optional)"
+              ;;
+          esac
 
       - name: Install Ollama
         run: curl -fsSL https://ollama.com/install.sh | sh
