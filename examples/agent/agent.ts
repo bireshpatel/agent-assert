@@ -12,7 +12,9 @@
  * 6. The agent records EVERY step in a trace (AgentTrace)
  *
  * Provider selection: set `AgentConfig.provider`, or `LLM_PROVIDER=anthropic|openai|ollama`.
- * Keys: `ANTHROPIC_API_KEY` (Anthropic), `OPENAI_API_KEY` (OpenAI cloud or Ollama dummy).
+ * Keys: `ANTHROPIC_API_KEY` (Anthropic), `OPENAI_API_KEY` (OpenAI). For **`LLM_PROVIDER=ollama`**, local models
+ * typically need only **`LLM_MODEL`**; the client uses the placeholder apiKey `ollama`. Optional **`OLLAMA_API_KEY`**
+ * if you use Ollama Cloud–hosted model tags (e.g. `*:cloud`).
  * Local Ollama: `LLM_PROVIDER=ollama` or `LLM_PROVIDER=openai` with `OPENAI_BASE_URL`
  * (e.g. `http://127.0.0.1:11434/v1`). See `.env.example`.
  */
@@ -112,12 +114,20 @@ function resolveAgentConfig(config: AgentConfig): ResolvedAgentConfig {
       ? resolveOpenAIBaseURL(provider, config)
       : undefined;
 
-  let apiKey =
-    config.apiKey ??
-    (provider === 'openai' || provider === 'ollama'
-      ? process.env.OPENAI_API_KEY
-      : process.env.ANTHROPIC_API_KEY) ??
-    '';
+  let apiKey = config.apiKey?.trim() ?? '';
+
+  if (!apiKey) {
+    if (provider === 'anthropic') {
+      apiKey = process.env.ANTHROPIC_API_KEY?.trim() ?? '';
+    } else if (provider === 'ollama') {
+      apiKey =
+        process.env.OLLAMA_API_KEY?.trim() ||
+        process.env.OPENAI_API_KEY?.trim() ||
+        '';
+    } else {
+      apiKey = process.env.OPENAI_API_KEY?.trim() ?? '';
+    }
+  }
 
   if ((provider === 'openai' || provider === 'ollama') && !apiKey && baseURL) {
     apiKey = 'ollama';

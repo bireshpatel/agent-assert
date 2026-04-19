@@ -279,7 +279,7 @@ Helpers:
 
 Playwright loads **`tests/env-llm.ts`** from **`playwright.config.ts`** (`applyLlmVarsFromDotEnv()`). Selected keys from a project-root **`.env`** file are merged into `process.env` (`.env` wins over existing shell vars for those keys): `LLM_PROVIDER`, `LLM_MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OLLAMA_API_KEY`, `OLLAMA_BASE_URL`. Copy **`.env.example`** to **`.env`** and fill in keys so tests and IDE runs see the same configuration without exporting variables manually.
 
-**GitHub Actions CI** (`.github/workflows/ci.yml`) installs Ollama, pulls **`deepseek-v3.2:cloud`**, and runs the smoke test. Add repository secret **`OLLAMA_API_KEY`** (from [ollama.com/settings/keys](https://ollama.com/settings/keys)) so cloud models can pull and run in headless CI.
+**GitHub Actions CI** (`.github/workflows/ci.yml`) installs Ollama, pulls a **small local model** (`llama3.2:1b` by default), and runs the smoke test using only **`LLM_PROVIDER`** + **`LLM_MODEL`** (no API key). Use a local tag in CI; `*:cloud` models may need separate Ollama Cloud setup.
 
 ---
 
@@ -459,6 +459,9 @@ This is expected with LLM testing. Three strategies:
 
 **Wrong provider or API URL (401 / unexpected host):**  
 Confirm `LLM_PROVIDER` matches the key you set. For `openai`, set **`OPENAI_BASE_URL`** for a custom endpoint; **`OLLAMA_BASE_URL` is not read** for that provider. Use **`LLM_PROVIDER=ollama`** with Ollama’s `/v1` base if you intend local Ollama.
+
+**Ollama `500` / `internal service error` with `*:cloud` models:**  
+Cloud-tagged models may require an Ollama Cloud API key; use a **local** model tag for the same behavior without keys, or set optional **`OLLAMA_API_KEY`**.
 
 **Agent output is not JSON:**
 The system prompt tells Claude to respond in JSON, but it sometimes wraps it in markdown fences. The `parseOutput()` method in `agent.ts` handles this. If you see `taskType: "unknown"`, the JSON parsing failed entirely — check the raw text in the trace.
