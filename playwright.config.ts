@@ -31,6 +31,12 @@ import { applyLlmVarsFromDotEnv } from './tests/env-llm.js';
 /** Loads LLM + API keys from `.env` into `process.env` (see tests/env-llm.ts). */
 applyLlmVarsFromDotEnv();
 
+/** GitHub Actions and similar CI set `CI=true`. Local Ollama on CPU there often exceeds 120s per test. */
+const isCi = process.env.CI === 'true';
+
+/** Per-test cap for LLM + tool runs (`behavioral` project). CI gets a longer budget. */
+const behavioralTimeoutMs = isCi ? 300_000 : 120_000;
+
 /** Label for the HTML report header: provider + resolved model (aligned with agent defaults). */
 function htmlReportTitle(): string {
   const p = process.env.LLM_PROVIDER?.toLowerCase();
@@ -93,8 +99,8 @@ export default defineConfig({
     {
       name: 'behavioral',
       testDir: './tests/behavioral',
-      // Local LLMs on CPU (e.g. Ollama in CI) often need >60s per test; multi-round runs add more.
-      timeout: 120_000,
+      // Local: 2 min is usually enough. CI (Ollama on shared CPU): often 2–4+ min for first inference.
+      timeout: behavioralTimeoutMs,
     },
     {
       name: 'boundary',

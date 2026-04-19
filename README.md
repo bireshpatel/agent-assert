@@ -299,7 +299,7 @@ Playwright loads **`tests/env-llm.ts`** from **`playwright.config.ts`** (`applyL
 ### playwright.config.ts (high level)
 
 - **`retries: 1`** — each failed test runs one more time (LLM outputs vary)
-- **Timeouts:** default **45s**; **`behavioral`** project **120s** (LLM + tools, slow on CPU/Ollama in CI); **`boundary`** **45s**
+- **Timeouts:** default **45s**; **`behavioral`** project **120s** locally, **300s** when **`CI=true`** (e.g. GitHub Actions + Ollama on CPU); **`boundary`** **45s**
 - **`trace: 'off'`** — browser-style Playwright traces are disabled (this suite does not use a browser). Failures still get rich attachments from **`registerAgentTraceForDiagnostics`** in `tests/fixtures/setup.ts` (see below)
 - **`workers: 3`** — tune for your API rate limits
 - **HTML report `title`** — includes resolved LLM provider and model for quick scanning
@@ -460,8 +460,8 @@ Each test run calls a real LLM API. Costs depend on provider and model.
 
 ## Troubleshooting
 
-**Tests timeout (behavioral tests use 120s):**
-LLM APIs and local Ollama on CPU can be slow (especially in GitHub Actions). Adjust `timeout` under the **`behavioral`** project in `playwright.config.ts`. Check your API key / provider. For Ollama in CI, ensure the model is pulled before tests and the runner has enough RAM.
+**Tests timeout (behavioral tests: 120s local, 300s on CI):**
+LLM APIs and local Ollama on CPU can be slow (especially in GitHub Actions — first inference after `ollama pull` can take minutes). The **`behavioral`** project uses a longer cap when **`CI=true`**. You can raise `behavioralTimeoutMs` in `playwright.config.ts` if needed. For Ollama in CI, ensure the model is pulled before tests and the runner has enough RAM.
 
 **Tests are flaky (pass sometimes, fail sometimes):**
 This is expected with LLM testing. Three strategies:
