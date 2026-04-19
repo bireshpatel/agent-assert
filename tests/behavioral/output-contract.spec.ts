@@ -3,10 +3,10 @@
  * 
  * PATTERN 2: BEHAVIOR CONTRACT VALIDATION
  * ─────────────────────────────────────────
- * Tests whether the agent's output satisfies SEMANTIC CONTRACTS
- * rather than exact string matches.
- * 
- * THIS IS THE CORE INNOVATION OF THE FRAMEWORK.
+ * Tests whether the agent's output satisfies BEHAVIOR CONTRACTS (heuristic:
+ * fields, keywords, forbidden patterns) rather than exact string matches.
+ *
+ * Core idea of this pattern in the framework:
  * 
  * THE PROBLEM WITH expect(output).toBe("..."):
  * Run 1: "The file contains 2 test failures: payment timeout and card error"
@@ -20,7 +20,7 @@
  * 1. The output has the right structure (required fields)
  * 2. The output expresses the right intent (keyword matching)
  * 3. The output doesn't contain red flags (forbidden patterns)
- * 4. The confidence score from NonDeterministicMatcher is above threshold
+ * 4. The heuristic confidence score from HeuristicContractMatcher is above threshold
  * 
  * TUNING GUIDANCE:
  * If tests are too flaky → lower minKeywordMatchRatio or add more keywords
@@ -30,7 +30,7 @@
 import { test, expect } from '@playwright/test';
 import { AgentAssert } from '../../framework/AgentAssert.js';
 import { BehaviorContract } from '../../framework/BehaviorContract.js';
-import { NonDeterministicMatcher } from '../../framework/NonDeterministicMatcher.js';
+import { HeuristicContractMatcher } from '../../framework/HeuristicContractMatcher.js';
 import {
   createTestAgent,
   registerAgentTraceForDiagnostics,
@@ -130,7 +130,7 @@ test.describe('Behavior Contract Validation', () => {
   /**
    * TEST 2D: Output contains intent-specific content (fuzzy match)
    * 
-   * Uses NonDeterministicMatcher.containsIntent directly for a
+   * Uses HeuristicContractMatcher.containsIntent directly for a
    * targeted check: does the output mention the payment failure
    * from the fixture file?
    * 
@@ -144,7 +144,7 @@ test.describe('Behavior Contract Validation', () => {
     registerAgentTraceForDiagnostics(testInfo, trace);
 
     // Check that the output mentions the payment failure
-    const result = NonDeterministicMatcher.containsIntent(
+    const result = HeuristicContractMatcher.containsIntent(
       trace.output,
       'payment gateway timeout failure',
       true,   // fuzzy matching enabled
@@ -163,7 +163,7 @@ test.describe('Behavior Contract Validation', () => {
    * TEST 2E: Output has valid AgentOutput structure
    * 
    * Structural check — the output must be a valid AgentOutput object
-   * with all required fields. This doesn't check semantics, just shape.
+   * with all required fields. This doesn't run contract/heuristic checks — only shape.
    * 
    * If this fails, the agent's system prompt isn't working —
    * Claude isn't producing structured JSON output.

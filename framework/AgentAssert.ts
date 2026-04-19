@@ -40,7 +40,7 @@
 
 import { expect } from '@playwright/test';
 import { AgentTrace, ContractDefinition, MatchResult } from '../agent/types.js';
-import { NonDeterministicMatcher } from './NonDeterministicMatcher.js';
+import { HeuristicContractMatcher } from './HeuristicContractMatcher.js';
 
 export class AgentAssert {
 
@@ -141,8 +141,8 @@ export class AgentAssert {
   /**
    * ASSERTION 2: Does the output satisfy a behavior contract?
    * 
-   * This is where the NonDeterministicMatcher does its work.
-   * Instead of checking exact values, we check semantic rules.
+   * This is where HeuristicContractMatcher does its work: fields, keyword overlap,
+   * forbidden regexes — not LLM-grade semantics (see HeuristicContractMatcher.ts).
    * 
    * @param output - The agent's structured output (AgentOutput)
    * @param contract - The behavior contract to evaluate against
@@ -169,7 +169,7 @@ export class AgentAssert {
     contract: ContractDefinition,
     minConfidence: number = 0.5
   ): MatchResult {
-    const result = NonDeterministicMatcher.evaluate(output, contract);
+    const result = HeuristicContractMatcher.evaluate(output, contract);
 
     // Override the matched flag based on minConfidence
     return {

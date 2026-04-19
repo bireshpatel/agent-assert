@@ -37,7 +37,6 @@
 import { test, expect } from '@playwright/test';
 import { AgentAssert } from '../../framework/AgentAssert.js';
 import { BehaviorContract } from '../../framework/BehaviorContract.js';
-import { NonDeterministicMatcher } from '../../framework/NonDeterministicMatcher.js';
 import {
   createFailingApiAgent,
   createFailingFileReaderAgent,

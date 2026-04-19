@@ -6,7 +6,9 @@
 
 ## About
 
-A working proof-of-concept that demonstrates five testing patterns for AI agents that call tools through a **`ToolRegistry`** (the same tool definitions map cleanly to Anthropic/OpenAI tool formats and to MCP-style schemas). The repo does not run a live MCP server by default; tools execute in-process so tests stay fast and deterministic. The framework introduces `NonDeterministicMatcher` — an assertion utility that evaluates LLM outputs against semantic intent contracts instead of exact string matches.
+A working proof-of-concept that demonstrates five testing patterns for AI agents that call tools through a **`ToolRegistry`** (the same tool definitions map cleanly to Anthropic/OpenAI tool formats and to MCP-style schemas). The repo does not run a live MCP server by default; tools execute in-process so tests stay fast and deterministic.
+
+**Behavior contracts** are checked by **`HeuristicContractMatcher`**: required fields, **case-insensitive keyword overlap**, **regex** forbidden phrases, and optional custom validators — *not* embedding similarity or LLM-as-judge semantics. The weighted **`confidence`** score is a tuning signal, not a calibrated measure of meaning. That avoids pretending the cheap matcher is “semantic” while still letting you reject exact-string tests for variable LLM wording. See **Heuristic matching: scope and limits** below.
 
 The deliberate use of Playwright (not Jest, not Vitest) as the test runner is itself a publishable insight.
 
@@ -36,11 +38,11 @@ The deliberate use of Playwright (not Jest, not Vitest) as the test runner is it
       │ 5. Capture TRACE    │    └───────────┬─────────────┘
       └────────┬────────────┘                │
                │                  ┌──────────▼──────────────┐
-    ┌──────────▼───────────┐      │ NonDeterministicMatcher │
-    │   ToolRegistry       │      │                         │
-    │                      │      │ Layer 1: Structure      │
-    │ file-reader → exec() │      │ Layer 2: Semantics      │
-    │ api-caller  → exec() │      │ Layer 3: Forbidden      │
+    ┌──────────▼───────────┐      │ HeuristicContractMatcher │
+    │   ToolRegistry       │      │                          │
+    │                      │      │ Layer 1: Structure       │
+    │ file-reader → exec() │      │ Layer 2: Keywords (BoW)   │
+    │ api-caller  → exec() │      │ Layer 3: Forbidden (regex)│
     └──────────────────────┘      │ Layer 4: Custom         │
                                   │                         │
                                   │ Returns: MatchResult    │
@@ -58,8 +60,8 @@ The deliberate use of Playwright (not Jest, not Vitest) as the test runner is it
 6. **Loop continues** until the model produces a final text response
 7. **Agent builds `AgentTrace`** — captures EVERY step (tool calls, tool results, reasoning, output)
 8. **Test receives the trace** and passes it to AgentAssert methods
-9. **AgentAssert uses NonDeterministicMatcher** to evaluate output against BehaviorContracts
-10. **MatchResult returned** with confidence score and detailed breakdown
+9. **AgentAssert uses HeuristicContractMatcher** to score output against BehaviorContracts
+10. **MatchResult returned** with heuristic confidence and per-layer details
 
 ---
 
@@ -88,9 +90,9 @@ AgentAssert.expectMatched(result, 'file-reader should be invoked'); // embeds Ag
 ### Pattern 2: Behavior Contract Validation
 **File:** `tests/behavioral/output-contract.spec.ts`
 
-**What it tests:** Does the output satisfy a semantic contract (not exact string match)?
+**What it tests:** Does the output satisfy a **heuristic** contract (fields + keywords + patterns), not an exact string match?
 
-**Why it's unique:** `expect(output).toBe("...")` breaks on every LLM run. Contracts define rules that any correct output must satisfy, regardless of exact phrasing.
+**Why it's unique:** `expect(output).toBe("...")` breaks on every LLM run. Contracts define cheap rules that often track “good enough” outputs. Synonymous phrasing can still fail if keywords don’t align — widen keywords, lower thresholds, add a **customValidator**, or upgrade to embeddings / LLM-judge (see limits section below).
 
 **Key assertion:**
 ```typescript
@@ -100,9 +102,9 @@ AgentAssert.expectMatched(result, 'SUMMARIZATION contract should pass');
 
 **What to look at in the code:**
 - `BehaviorContract.ts` — pre-built contracts with required fields, keywords, forbidden patterns
-- `NonDeterministicMatcher.evaluate()` — the three-layer evaluation engine
-- `minKeywordMatchRatio` — controls how strict keyword matching is
-- `forbiddenPatterns` — hard-fail patterns that override the confidence score
+- `HeuristicContractMatcher.evaluate()` — structure + keyword overlap + forbidden regex (+ optional custom)
+- `minKeywordMatchRatio` — how much of the keyword list must appear as substrings
+- `forbiddenPatterns` — regex matches force a contract failure path
 
 ---
 
@@ -192,7 +194,7 @@ Every type definition. Read this first — everything else depends on these type
 
 - `AgentTrace` — the backbone. Every assertion operates on traces.
 - `TraceStep` — one decision the agent made (tool_call, tool_result, reasoning, output)
-- `ContractDefinition` — the rules that define "correct" for non-deterministic outputs
+- `ContractDefinition` — heuristic rules for “correct” when wording varies between runs
 - `MatchResult` — what assertions return (confidence score + details)
 
 ### agent/agent.ts
@@ -217,19 +219,31 @@ Tools use MCP-aligned JSON schemas and register through **`ToolRegistry`**. In t
 ### agent/tools/registry.ts
 Maps tool names to definitions. Provides `toAnthropicTools()` and `toOpenAITools()` so the same tool definitions work with either API. This is the bridge between your tool definitions and the LLM.
 
-### framework/NonDeterministicMatcher.ts
-**The core innovation.** Three evaluation layers:
+### framework/HeuristicContractMatcher.ts
+**Heuristic evaluation (not deep semantics).** Layers:
 
-1. **Structural** (40% weight) — are required fields present?
-2. **Semantic** (35% weight) — do enough intent keywords appear?
-3. **Forbidden** (25% weight) — do any red-flag patterns match?
+1. **Structural** (40% weight) — required fields (and optional length)
+2. **Keywords** (35% weight, or 25% + 10% custom when `customValidator` is set) — bag-of-words style: substring presence for each listed keyword
+3. **Forbidden** (25% weight) — regex patterns; any hit triggers the contract-failure path
+4. **Custom** (optional) — your own validator in the contract
 
-Forbidden patterns cause a hard failure regardless of other scores.
+The headline `confidence` is a **weighted average of those scores** — useful for ranking and thresholds, not as a semantic similarity score.
 
 **Tuning knobs:**
-- `minKeywordMatchRatio` in the contract — lower = more lenient
-- `confidence` threshold in the test — lower = fewer flaky tests
-- `forbiddenPatterns` — add patterns to catch more failure modes
+- `minKeywordMatchRatio` — lower = more lenient keyword layer
+- Assertion threshold on `result.confidence` — lower = fewer flaky tests
+- `forbiddenPatterns` — stricter guardrails (regex can be brittle; test them)
+- **Synonyms** — add alternate phrasings to `requiredIntentKeywords`, or use `customValidator` / external judges (below)
+
+### Heuristic matching: scope and limits
+
+| Approach | What this repo does | What would be “more semantic” |
+|----------|---------------------|--------------------------------|
+| Keyword list | Substring checks after lowercasing | LLM-as-judge, entailment models |
+| Confidence | Weighted heuristic blend | Calibrated metrics or judge scores |
+| Same meaning, different words | Can **fail** unless keywords or patterns cover both | Embeddings vs reference texts, synonym lists |
+
+**Possible upgrades (not implemented here):** call a second model to grade outputs against the contract; embed output and reference snippets and compare cosine similarity; use an NLP library for paraphrase / NLI. Those add latency, cost, and complexity — the heuristic matcher stays intentionally cheap and explicit.
 
 ### framework/BehaviorContract.ts
 Pre-built contracts for common task types. Each contract defines what "correct" means for that task type. The five contracts: SUMMARIZATION, API_ACTION, MULTI_STEP, SCOPE_BOUNDED, GRACEFUL_FAILURE.
@@ -366,14 +380,14 @@ npx playwright show-report
 1. Add a static method to `AgentAssert.ts`
 2. Accept `AgentTrace` or `AgentOutput` as input
 3. Return `MatchResult`
-4. Use `NonDeterministicMatcher` methods internally if needed
+4. Use `HeuristicContractMatcher` methods internally if needed
 5. Include detailed reasons in the `details` array
 
 ### Adapt for Another LLM Provider (beyond Anthropic, OpenAI, and Ollama)
 1. Add a branch in `agent/agent.ts` alongside the existing Anthropic and OpenAI-compatible loops
 2. Add a `toYourProviderTools()` (or equivalent) on `ToolRegistry` if the tool schema differs
 3. Map that provider’s tool-call and tool-result messages into the same `TraceStep` shapes the framework already expects
-4. The framework layer (AgentAssert, NonDeterministicMatcher, BehaviorContract) stays UNCHANGED — it operates on `AgentTrace`, which is provider-agnostic
+4. The framework layer (AgentAssert, HeuristicContractMatcher, BehaviorContract) stays UNCHANGED — it operates on `AgentTrace`, which is provider-agnostic
 
 ### Connect to a Real MCP Server
 1. Replace the `execute` function in your tool with MCP client calls

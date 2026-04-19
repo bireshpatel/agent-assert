@@ -123,17 +123,18 @@ export interface AgentOutput {
 
 /**
  * Defines what "correct" means for a specific type of agent output.
- * This replaces exact string matching with semantic rules.
- * 
+ * This replaces exact string matching with **heuristic rules** (fields, keywords, regex).
+ * It is not synonym-level or LLM-judge semantics — see HeuristicContractMatcher.
+ *
  * EXAMPLE:
  * For a SUMMARIZATION contract:
  * - requiredFields: ['summary', 'sourceFile']
  * - requiredIntentKeywords: ['summary', 'key points', 'overview']
  * - maxLengthChars: 500
  * - forbiddenPatterns: [/I don't know/, /I cannot/]
- * 
- * The NonDeterministicMatcher evaluates output against these rules
- * and returns a confidence score, not a binary pass/fail.
+ *
+ * HeuristicContractMatcher evaluates output against these rules and returns a
+ * weighted score (`confidence`), not a calibrated semantic probability.
  */
 export interface ContractDefinition {
   name: string;
@@ -153,15 +154,12 @@ export interface ValidationResult {
 }
 
 /**
- * What the NonDeterministicMatcher returns.
- * 
- * KEY INSIGHT: `confidence` is not binary.
- * An output might score 0.7 — it partially satisfies the contract.
- * Your test decides the threshold: strict tests require 0.9+,
- * exploratory tests might accept 0.5+.
- * 
- * `details` tells you exactly what matched and what didn't,
- * so when a test fails, you know WHY without re-reading the LLM output.
+ * What HeuristicContractMatcher (and similar assertions) return.
+ *
+ * `confidence` is a heuristic aggregate (structure + keyword overlap + patterns),
+ * not a model of true semantic alignment. Use thresholds as tuning knobs.
+ *
+ * `details` lists structural, keyword, forbidden, and custom lines for debugging.
  */
 export interface MatchResult {
   matched: boolean;

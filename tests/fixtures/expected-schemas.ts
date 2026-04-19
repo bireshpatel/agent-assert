@@ -4,11 +4,11 @@
  * JSON SCHEMA CONTRACTS
  * 
  * These schemas define the STRUCTURE of valid agent outputs.
- * They complement the BehaviorContracts (which check semantics).
+ * They complement the BehaviorContracts (which apply keyword/heuristic checks on content).
  * 
  * SCHEMA vs CONTRACT:
  * - Schema: "Does the output have the right fields and types?"
- * - Contract: "Does the output express the right intent?"
+ * - Contract: "Does the output pass keyword / pattern heuristics for intent?"
  * 
  * Both are needed. An output can have perfect structure but
  * wrong content (schema passes, contract fails). Or it can
