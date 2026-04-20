@@ -30,11 +30,11 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { test, type TestInfo } from '@playwright/test';
 import { applyLlmVarsFromDotEnv } from '../env-llm.js';
-import type { AgentTrace } from '../../agent/types.js';
-import { Agent, type AgentConfig } from '../../agent/agent.js';
-import { ToolRegistry } from '../../agent/tools/registry.js';
-import { createFileReaderTool } from '../../agent/tools/file-reader.js';
-import { createApiCallerTool, MockResponse } from '../../agent/tools/api-caller.js';
+import type { AgentTrace } from '../../framework/types.js';
+import { Agent, type AgentConfig } from '../../examples/agent/agent.js';
+import { ToolRegistry } from '../../examples/agent/tools/registry.js';
+import { createFileReaderTool } from '../../examples/agent/tools/file-reader.js';
+import { createApiCallerTool, MockResponse } from '../../examples/agent/tools/api-caller.js';
 
 applyLlmVarsFromDotEnv();
 
@@ -218,7 +218,7 @@ test.afterEach(async ({}, testInfo) => {
 /**
  * Optional env-driven overrides for which LLM to use in tests.
  * - `LLM_PROVIDER=openai` + `OPENAI_API_KEY` — OpenAI cloud (default model `gpt-4o` unless `LLM_MODEL`).
- * - `LLM_PROVIDER=ollama` — local Ollama (OpenAI-compatible API); default model `llama3:latest` unless `LLM_MODEL`.
+ * - `LLM_PROVIDER=ollama` — local Ollama (OpenAI-compatible API); default model `llama3.2:3b` unless `LLM_MODEL`.
  * - `LLM_PROVIDER=openai` + `OPENAI_BASE_URL` (e.g. `http://127.0.0.1:11434/v1`) — same as Ollama without renaming provider.
  * - Default when unset: Anthropic with `claude-sonnet-4-20250514` unless `LLM_MODEL` overrides.
  */

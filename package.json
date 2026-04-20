@@ -1,12 +1,17 @@
 {
   "name": "agent-assert",
   "version": "0.1.0",
-  "description": "A Playwright-based testing framework for agentic AI systems using MCP tool orchestration",
+  "private": true,
+  "description": "POC: Playwright tests + heuristic contracts for tool-calling LLM agents. Demo agent in examples/agent/. Not published to npm.",
   "author": "Biresh Patel",
   "license": "MIT",
   "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  },
   "scripts": {
     "test": "npx playwright test",
+    "test:smoke": "npx playwright test tests/behavioral/intent-routing.spec.ts -g \"routes file-read intent to file-reader tool\"",
     "test:behavioral": "npx playwright test tests/behavioral/",
     "test:boundary": "npx playwright test tests/boundary/",
     "test:ollama": "LLM_PROVIDER=ollama npx playwright test",

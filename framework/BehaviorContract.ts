@@ -1,7 +1,7 @@
 /**
  * framework/BehaviorContract.ts
  * 
- * BEHAVIOR CONTRACTS — what "correct" means when outputs are non-deterministic
+ * BEHAVIOR CONTRACTS — what "correct" means when LLM wording varies run to run
  * 
  * THE PROBLEM:
  * In traditional testing, you write:
@@ -40,7 +40,7 @@
  * - Be under 1000 chars (it's a creation confirmation, not a novel)
  */
 
-import { ContractDefinition, ValidationResult } from '../agent/types.js';
+import { ContractDefinition, ValidationResult } from './types.js';
 
 /**
  * Pre-built contracts for common agent task types.

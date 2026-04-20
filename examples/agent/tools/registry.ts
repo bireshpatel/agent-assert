@@ -1,5 +1,5 @@
 /**
- * agent/tools/registry.ts
+ * examples/agent/tools/registry.ts
  * 
  * TOOL REGISTRY
  * 
@@ -22,7 +22,7 @@
  */
 
 import type OpenAI from 'openai';
-import { ToolDefinition, ToolResult } from '../types.js';
+import { ToolDefinition, ToolResult } from '../../../framework/types.js';
 
 export class ToolRegistry {
   private tools: Map<string, ToolDefinition> = new Map();
@@ -62,7 +62,16 @@ export class ToolRegistry {
         error: `Tool "${name}" is not registered. Available tools: ${this.listNames().join(', ')}`,
       };
     }
-    return tool.execute(input);
+    try {
+      return await tool.execute(input);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        data: null,
+        error: `Tool "${name}" failed: ${message}`,
+      };
+    }
   }
 
   /**
