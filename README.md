@@ -1,5 +1,7 @@
 # AgentAssert
 
+[![CI](https://github.com/bireshpatel/agent-assert/actions/workflows/ci.yml/badge.svg)](https://github.com/bireshpatel/agent-assert/actions/workflows/ci.yml)
+
 **What this is:** Automated tests for an **AI agent** that can **call tools** (for example: “read this file,” “call this API”). The tests check **what the agent decided to do** (which tools it picked, in what order, and what it said at the end)—not just the final text.
 
 **For QA:** Think of it like testing **business rules on decisions**, not only checking a screen or a single return value. Failures attach **traces** (a step-by-step log) so you can see prompts, tool calls, and outputs in the Playwright HTML report.
