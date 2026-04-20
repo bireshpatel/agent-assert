@@ -1,46 +1,52 @@
 # AgentAssert
 
-**Proof-of-concept:** Playwright tests + reusable assertion helpers for tool-calling LLM agents (MCP-shaped tool schemas, in-process tools in the demo).
+**What this is:** Automated tests for an **AI agent** that can **call tools** (for example: “read this file,” “call this API”). The tests check **what the agent decided to do** (which tools it picked, in what order, and what it said at the end)—not just the final text.
 
-This repository is **`"private": true`** in `package.json` — it is **not** published to npm and is **not** a productized “framework.” It is a **reference implementation** you can clone, read, and copy from. A clean entry point exists for imports (`index.ts` → `framework/`), but publishing a real package would add build steps, versioning, and semver guarantees — out of scope for this POC.
+**For QA:** Think of it like testing **business rules on decisions**, not only checking a screen or a single return value. Failures attach **traces** (a step-by-step log) so you can see prompts, tool calls, and outputs in the Playwright HTML report.
+
+This repo is a **sample / reference project** (`"private": true` in `package.json`—not published as a product). You can copy patterns from it into your own codebase.
 
 ---
 
 ## Repository layout
 
-| Path | Role |
-|------|------|
-| **`framework/`** | Reusable assertions (`AgentAssert`, `HeuristicContractMatcher`, `BehaviorContract`) and **shared types** (`framework/types.ts` — traces, contracts, tool shapes). |
-| **`index.ts`** | Barrel export so you can `import { AgentAssert, … } from 'agent-assert'` when vendoring this repo. |
-| **`examples/agent/`** | **Demo system under test:** LLM loop, `ToolRegistry`, file-reader / api-caller tools. Replace with your own agent; keep compatible `AgentTrace` / `AgentOutput` shapes if you reuse the assertions. |
-| **`tests/`** | Playwright specs and fixtures wired to the demo agent via `tests/fixtures/setup.ts`. |
+
+| Folder / file | In plain terms |
+|---------------|----------------|
+| **`framework/`** | **Checks you reuse:** “Was tool X used?” “Does the answer follow our rules?” Helpers include `AgentAssert`, `HeuristicContractMatcher`, and shared types for traces and contracts. |
+| **`index.ts`** | Single entry point for importing the framework from this repo when you copy it in. |
+| **`examples/agent/`** | **Demo agent** (the app under test): chat loop, tool list, sample tools (`file-reader`, `api-caller`). Swap this for your real agent; keep the same trace shape if you keep these tests. |
+| **`tests/`** | Playwright test files plus **`tests/fixtures/setup.ts`**, which builds the demo agent for each scenario. |
+
 
 ---
 
 ## About
 
-A working proof-of-concept that demonstrates five testing patterns for AI agents that call tools through a **`ToolRegistry`** (the same tool definitions map cleanly to Anthropic/OpenAI tool formats and to MCP-style schemas). The repo does not run a live MCP server by default; tools execute in-process so tests stay fast and deterministic.
+**What gets tested:** Five patterns that cover **tool choice**, **output rules**, **order of steps**, **staying inside allowed tools**, and **behavior when something fails**.
 
-**Behavior contracts** are checked by **`HeuristicContractMatcher`**: required fields, **case-insensitive keyword overlap**, **regex** forbidden phrases, and optional custom validators — *not* embedding similarity or LLM-as-judge semantics. The weighted **`confidence`** score is a tuning signal, not a calibrated measure of meaning. That avoids pretending the cheap matcher is “semantic” while still letting you reject exact-string tests for variable LLM wording. See **Heuristic matching: scope and limits** below.
+**Tool list:** Tools are registered in a **`ToolRegistry`** (a named list the model sees and that your code runs when the model asks). There is **no separate MCP server** in the default demo—tools run **inside the test process** so runs are **fast and stable**.
 
-The deliberate use of Playwright (not Jest, not Vitest) as the test runner is itself a publishable insight.
+**“Behavior contracts”:** Rules like “must include these fields,” “should mention these words,” “must not match these patterns.” The matcher is **rule-based** (keywords and patterns)—**not** a second AI judging the first, and **not** “true” semantic understanding. The **`confidence`** score is a **rough pass/fail helper** for tuning, not a scientific accuracy percentage. More detail: **Heuristic matching: scope and limits** below.
+
+**Why Playwright:** Same tool as browser E2E tests, but here it drives **API + agent** flows. You get **retries**, **timeouts per test**, and **HTML reports** with attachments (good for flaky LLM output).
 
 ---
 
 ## Architecture: How the Pieces Connect
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    YOUR TEST FILE                       │
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                    YOUR TEST FILE                                                 │
 │  import { AgentAssert } from 'agent-assert'  // or ../../framework/AgentAssert.js │
-│  const trace = await agent.run("some prompt")           │
-│  AgentAssert.toolWasInvoked(trace, 'file-reader')       │
-│  AgentAssert.satisfiesContract(trace.output, CONTRACT)    │
-└─────────────────┬──────────────────────────┬────────────┘
+│  const trace = await agent.run("some prompt")                                     │
+│  AgentAssert.toolWasInvoked(trace, 'file-reader')                                 │
+│  AgentAssert.satisfiesContract(trace.output, CONTRACT)                            │
+└─────────────────┬──────────────────────────┬──────────────────────────────────────┘
                   │                          │
       ┌───────────▼─────────┐    ┌───────────▼─────────────┐ 
-      │    Agent (SUT)      │    │   AgentAssert           │
-      │                     │    │   (assertion library)   │
+      │    Agent (app under │    │   AgentAssert           │
+      │     test)           │    │   (checks / asserts)    │
       │ 1. Send prompt to   │    │                         │
       │    LLM (Anthropic / │    │ - toolWasInvoked()      │
       │     OpenAI / Ollama)│    │ - satisfiesContract()   │
@@ -48,87 +54,131 @@ The deliberate use of Playwright (not Jest, not Vitest) as the test runner is it
       │    from model       │    │                         │
       │ 3. Execute tool     │    │ - traceFollowsSequence()│
       │ 4. Send result back │    │                         │
-      │ 5. Capture TRACE    │    └───────────┬─────────────┘
+      │ 5. Build TRACE      │    └───────────┬─────────────┘
       └────────┬────────────┘                │
-               │                  ┌──────────▼──────────────┐
-    ┌──────────▼───────────┐      │ HeuristicContractMatcher │
-    │   ToolRegistry       │      │                          │
-    │                      │      │ Layer 1: Structure       │
-    │ file-reader → exec() │      │ Layer 2: Keywords (BoW)   │
-    │ api-caller  → exec() │      │ Layer 3: Forbidden (regex)│
-    └──────────────────────┘      │ Layer 4: Custom         │
-                                  │                         │
-                                  │ Returns: MatchResult    │
-                                  │  { confidence: 0.82 }   │
-                                  └─────────────────────────┘
+               │                  ┌────────────▼──────────────┐
+    ┌──────────▼───────────┐      │ HeuristicContractMatcher  │
+    │   ToolRegistry       │      │                           │
+    │                      │      │ 1. Structure (fields)     │
+    │ file-reader → run()  │      │ 2. Keywords (word checks) │
+    │ api-caller  → run()  │      │ 3. Forbidden (patterns)   │
+    └──────────────────────┘      │ 4. Optional custom rule   │
+                                  │                           │
+                                  │ → MatchResult + score     │
+                                  └───────────────────────────┘
 ```
 
 ### Data Flow (Step by Step)
 
-1. **Test calls `agent.run(prompt)`** — sends a natural language task
-2. **Agent sends prompt to the configured LLM API** (Anthropic, OpenAI, or Ollama via OpenAI-compatible API) — along with tool definitions from ToolRegistry
-3. **The model responds with tool calls** — Anthropic: `tool_use` blocks; OpenAI: `function` tool calls — e.g. "call file-reader with path X"
-4. **Agent executes the tool** via ToolRegistry — gets back `ToolResult`
-5. **Agent sends tool result back to the model** — the model may request more tools
-6. **Loop continues** until the model produces a final text response
-7. **Agent builds `AgentTrace`** — captures EVERY step (tool calls, tool results, reasoning, output)
-8. **Test receives the trace** and passes it to AgentAssert methods
-9. **AgentAssert uses HeuristicContractMatcher** to score output against BehaviorContracts
-10. **MatchResult returned** with heuristic confidence and per-layer details
+```mermaid
+flowchart TB
+  subgraph T["1 Test"]
+    A["test calls agent.run(prompt)"]
+  end
+
+  subgraph G["2 Agent loop"]
+    B["Send prompt plus tool defs from ToolRegistry to LLM API"]
+    C{"Model response?"}
+    D["Tool calls: Anthropic tool_use / OpenAI function calls e.g. file-reader path X"]
+    E["ToolRegistry.execute returns ToolResult"]
+    F["Send tool results back to model"]
+    H["Final text answer"]
+  end
+
+  subgraph TR["3 Trace and assertions"]
+    I["Build AgentTrace: reasoning, tool_call, tool_result, output"]
+    J["Test passes trace to AgentAssert"]
+    K["AgentAssert plus HeuristicContractMatcher vs BehaviorContract"]
+    L["MatchResult: confidence and per-layer detail"]
+  end
+
+  A --> B
+  B --> C
+  C -->|tools| D
+  D --> E
+  E --> F
+  F --> C
+  C -->|done| H
+  H --> I
+  I --> J
+  J --> K
+  K --> L
+```
+
+
+
+1. The test starts the agent with a **plain-language task** (`agent.run(prompt)`).
+2. The agent sends that task to the **LLM** (Anthropic, OpenAI, or local Ollama) and includes the **list of tools** from the ToolRegistry.
+3. The model may answer with **“please run tool X with these inputs”** (the exact format differs by vendor; see diagram above).
+4. The agent runs the real tool code through the ToolRegistry and gets a **ToolResult** (success/failure + data).
+5. That result goes **back to the model**; steps 3–5 may **repeat** until the model stops asking for tools.
+6. The model eventually returns a **final text** answer (or stops).
+7. The agent assembles an **`AgentTrace`**: a **full log** of reasoning, each tool call, each tool result, and final output.
+8. The test sends that trace into **AgentAssert** helpers (pass/fail checks).
+9. For text rules, **HeuristicContractMatcher** compares the output to a **BehaviorContract** (keywords, patterns, etc.).
+10. You get a **`MatchResult`**: pass/fail style outcome, a **confidence** score, and **details** per check layer (useful when debugging failures).
 
 ---
 
 ## The Five Testing Patterns
 
 ### Pattern 1: Tool Invocation Assertion
+
 **File:** `tests/behavioral/intent-routing.spec.ts`
 
-**What it tests:** Did the agent select the correct tool for the given intent?
+**What it tests:** For a user request like “read this log file,” did the agent actually call the **right tool** (e.g. file-reader) and not something else?
 
-**Why it's unique:** Traditional tests check return values. Agent tests check *decisions*. The agent might return a plausible-looking summary even when it called the wrong tool (or no tool at all).
+**Why it matters:** A bad answer can still *sound* fine. This checks the **decision** (which tool ran), not only the final text.
 
 **Key assertion:**
+
 ```typescript
 const result = AgentAssert.toolWasInvoked(trace, 'file-reader', { filePath: /.*\.log$/ });
 AgentAssert.expectMatched(result, 'file-reader should be invoked'); // embeds AgentAssert.formatResult(result) on failure
 ```
 
 **What to look at in the code:**
-- `AgentAssert.toolWasInvoked()` — walks the trace looking for tool_call steps
-- `paramMatchers` — regex patterns validated against tool input parameters
-- Negative assertion — `AgentAssert.expectNotMatched(result, '...')` verifies a tool was NOT called (rich failure output via `formatResult`)
+
+- `AgentAssert.toolWasInvoked()` — finds **tool_call** steps in the trace
+- `paramMatchers` — optional checks on **arguments** passed to the tool (e.g. file path)
+- `AgentAssert.expectNotMatched()` — asserts a tool was **not** used (when the test expects a negative case)
 
 ---
 
 ### Pattern 2: Behavior Contract Validation
+
 **File:** `tests/behavioral/output-contract.spec.ts`
 
-**What it tests:** Does the output satisfy a **heuristic** contract (fields + keywords + patterns), not an exact string match?
+**What it tests:** Does the final answer follow **agreed rules** (required fields, must-include words, forbidden phrases)—without requiring an **exact** copy-paste string match?
 
-**Why it's unique:** `expect(output).toBe("...")` breaks on every LLM run. Contracts define cheap rules that often track “good enough” outputs. Synonymous phrasing can still fail if keywords don’t align — widen keywords, lower thresholds, add a **customValidator**, or upgrade to embeddings / LLM-judge (see limits section below).
+**Why it matters:** LLM wording changes every run. Contracts check **flexible rules** instead of one frozen sentence. If wording drifts, add keywords, relax thresholds, or add a **customValidator** (see **Heuristic matching: scope and limits**).
 
 **Key assertion:**
+
 ```typescript
 const result = AgentAssert.satisfiesContract(trace.output, BehaviorContract.SUMMARIZATION, 0.5);
 AgentAssert.expectMatched(result, 'SUMMARIZATION contract should pass');
 ```
 
 **What to look at in the code:**
-- `BehaviorContract.ts` — pre-built contracts with required fields, keywords, forbidden patterns
-- `HeuristicContractMatcher.evaluate()` — structure + keyword overlap + forbidden regex (+ optional custom)
-- `minKeywordMatchRatio` — how much of the keyword list must appear as substrings
-- `forbiddenPatterns` — regex matches force a contract failure path
+
+- `BehaviorContract.ts` — ready-made rule sets (fields, keywords, forbidden patterns)
+- `HeuristicContractMatcher.evaluate()` — runs structure + keywords + forbidden patterns (+ optional custom rule)
+- `minKeywordMatchRatio` — how many of the listed keywords must appear
+- `forbiddenPatterns` — if the output matches these, the contract **fails**
 
 ---
 
 ### Pattern 3: Multi-Step Trace Verification
+
 **File:** `tests/behavioral/tool-invocation.spec.ts`
 
-**What it tests:** Did the agent follow a valid reasoning path through multiple tool calls?
+**What it tests:** For workflows that need **more than one tool** (e.g. read file, then call API), did the agent follow a **sensible order** of steps?
 
-**Why it's unique:** No equivalent in Selenium/Playwright browser testing. Browser tests check page state, not the application's intermediate reasoning steps.
+**Why it matters:** UI tests usually see **screens**. Here you inspect the **sequence of tool calls** inside the trace—something classic UI checks do not cover.
 
 **Key assertion:**
+
 ```typescript
 const result = AgentAssert.traceFollowsSequence(trace, [
   { type: 'tool_call', toolName: 'file-reader' },
@@ -138,41 +188,47 @@ AgentAssert.expectMatched(result, 'trace should show file-reader then api-caller
 ```
 
 **What to look at in the code:**
-- `AgentAssert.traceFollowsSequence()` — checks steps appear in order (not necessarily consecutive)
-- The trace captures reasoning steps between tool calls
-- `toolCallCountInRange()` — sanity check on how many tools were called
+
+- `AgentAssert.traceFollowsSequence()` — checks that steps appear in the **right order** (they do not have to be back-to-back)
+- The trace can include **reasoning** lines between tool calls
+- `toolCallCountInRange()` — optional check that the agent did not call tools **too many** or **too few** times
 
 ---
 
 ### Pattern 4: Boundary/Scope Enforcement
+
 **File:** `tests/boundary/hallucination-guard.spec.ts`
 
-**What it tests:** Did the agent stay within its defined task boundaries?
+**What it tests:** Did the agent **only use tools it is allowed to use** and avoid **out-of-scope** actions?
 
-**Why it's unique:** LLMs hallucinate tool calls, fabricate data, and take unsolicited actions. Nobody tests for this systematically.
+**Why it matters:** Models sometimes invent tool names or try extra actions. This pattern catches **scope creep** and **fake tool calls**.
 
 **Key assertion:**
+
 ```typescript
 const result = AgentAssert.boundaryNotViolated(trace, ['file-reader']);
 AgentAssert.expectMatched(result, 'only file-reader should be used');
 ```
 
 **What to look at in the code:**
-- `boundaryNotViolated()` — checks that ONLY allowed tools were called
-- `createFileOnlyAgent()` — test factory that registers limited tools
-- `HALLUCINATION_PROMPTS` — adversarial prompts designed to trigger out-of-scope behavior
-- `SCOPE_BOUNDED` contract — forbidden patterns for scope-creep language
+
+- `boundaryNotViolated()` — fails if any **tool outside the allow-list** was called
+- `createFileOnlyAgent()` — builds an agent with **only** certain tools registered (tight boundary)
+- `HALLUCINATION_PROMPTS` — tricky prompts meant to provoke **wrong** or **extra** tool use
+- `SCOPE_BOUNDED` contract — rules that flag **forbidden** wording when the task should stay narrow
 
 ---
 
 ### Pattern 5: Failure & Retry Observability
+
 **File:** `tests/boundary/retry-behavior.spec.ts`
 
-**What it tests:** Does the agent degrade gracefully when tools fail?
+**What it tests:** When a tool **errors** (file missing, API down), does the agent **admit the failure** and avoid claiming success? Does it **retry** within reasonable limits?
 
-**Why it's unique:** Most agent tests don't simulate tool failures at all.
+**Why it matters:** Many demos only test the happy path. Here failures are **forced** so you can see honest vs misleading behavior.
 
 **Key assertions (examples):**
+
 ```typescript
 // Honest reporting: output mentions failure / contract passes
 expect(mentionsFailure, 'output should reflect tool failure').toBe(true);
@@ -193,130 +249,144 @@ AgentAssert.expectMatched(
 ```
 
 **What to look at in the code:**
-- `createFailingFileReaderAgent()` — agent with tools wired to always fail
-- `GRACEFUL_FAILURE` contract — requires error keywords, forbids success-claiming language
-- `retryCount` in trace metadata — tracks how many tool results had `success: false` in the agent loop
-- Cascade failure test — verifies downstream behavior when file-reader fails (see `textReflectsUpstreamFailure` / tool traces)
+
+- `createFailingFileReaderAgent()` — file-reader always **fails** on purpose (error-path testing)
+- `GRACEFUL_FAILURE` contract — expects **honest** error language; forbids **false success** claims
+- `retryCount` in trace metadata — counts tool results with **`success: false`**
+- Cascade tests — what happens **after** the first tool fails (downstream steps)
 
 ---
 
 ## Key Files Explained
 
 ### framework/types.ts
-Shared types for traces, contracts, and (in the demo) tool definitions. Assertions and `examples/agent/` both import from here so the SUT and matchers stay aligned.
 
-- `AgentTrace` — what assertions operate on
-- `TraceStep`, `AgentOutput`, `ContractDefinition`, `MatchResult`, `ToolDefinition`, …
+**Shared shapes** for traces, contracts, and tools. Tests and the demo agent both use these types so “what we record” and “what we assert” stay in sync.
+
+- **`AgentTrace`** — the main object assertions read
+- Other types: steps, output, contracts, tool definitions, match results
 
 ### examples/agent/agent.ts
-**Demo system under test** — not part of the reusable assertion layer. The tool-calling loop is the reference pattern:
 
-1. Send prompt + tool definitions to **Anthropic Messages API** or **OpenAI Chat Completions** (see `AgentConfig.provider`)
-2. The model responds with text and/or tool calls (`tool_use` vs `function` / `tool_calls` depending on provider)
-3. Execute requested tools
-4. Send tool results back in the provider-specific message format
-5. Repeat until the model gives a final answer
-6. Build the AgentTrace from everything that happened
+**Demo agent** (the application under test). It is **not** the reusable assertion library. Flow in plain terms:
 
-**Provider selection:** Pass `provider: 'anthropic' | 'openai' | 'ollama'`, or set `LLM_PROVIDER` in the environment. Keys: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` (or pass `apiKey`). For **`LLM_PROVIDER=ollama`**, the OpenAI client uses `OPENAI_BASE_URL`, then `OLLAMA_BASE_URL`, then defaults to `http://127.0.0.1:11434/v1`. For **`LLM_PROVIDER=openai`**, only **`OPENAI_BASE_URL`** is used for a custom base (Azure, proxy, etc.); **`OLLAMA_BASE_URL` is ignored** so a stale shell variable cannot send OpenAI traffic to Ollama by accident.
+1. Send the user message and tool list to the LLM (**Anthropic** or **OpenAI-style** API, including Ollama).
+2. Read the model reply: plain text and/or **requests to call tools**.
+3. Run the requested tools; send results back to the model.
+4. Repeat until the conversation finishes.
+5. Package everything into an **`AgentTrace`**.
 
-**Important:** The system prompt in this file shapes agent behavior. If you change it, update the test contracts to match.
+**How to pick a provider:** Set `LLM_PROVIDER` (or `provider` in code) to `anthropic`, `openai`, or `ollama`. Use **`ANTHROPIC_API_KEY`** / **`OPENAI_API_KEY`** as needed. For Ollama, the client uses **`OPENAI_BASE_URL`**, then **`OLLAMA_BASE_URL`**, then **`http://127.0.0.1:11434/v1`**. For **`LLM_PROVIDER=openai`**, only **`OPENAI_BASE_URL`** sets a custom base (Azure, proxy, etc.); **`OLLAMA_BASE_URL`** is not used so you do not accidentally send OpenAI traffic to Ollama.
+
+**If you edit the system prompt here**, update test expectations and contracts so they still match what you want the agent to do.
 
 ### examples/agent/tools/file-reader.ts and api-caller.ts
-Demo tools use MCP-aligned JSON schemas and register through **`ToolRegistry`**. In this POC they run locally (file-reader reads from disk, api-caller uses mock responses). To connect them to a real MCP server, replace the `execute` function with MCP transport calls — the schema stays the same.
 
-**Security note:** `file-reader.ts` includes path traversal protection. Read the comments.
+**Sample tools:** JSON schema + **run** function. In the demo they run **locally** (real disk read; API tool uses **mock** responses). To use a real MCP server later, you would replace the **run** logic—not necessarily the schema.
+
+**Security:** `file-reader.ts` blocks path tricks; read the file comments before changing paths.
 
 ### examples/agent/tools/registry.ts
-Maps tool names to definitions. Provides `toAnthropicTools()` and `toOpenAITools()` so the same tool definitions work with either API. This is the bridge between your tool definitions and the LLM.
+
+**Name → tool implementation.** Also turns the same definitions into the **Anthropic** or **OpenAI** tool format the API expects.
 
 ### framework/HeuristicContractMatcher.ts
-**Heuristic evaluation (not deep semantics).** Layers:
 
-1. **Structural** (40% weight) — required fields (and optional length)
-2. **Keywords** (35% weight, or 25% + 10% custom when `customValidator` is set) — bag-of-words style: substring presence for each listed keyword
-3. **Forbidden** (25% weight) — regex patterns; any hit triggers the contract-failure path
-4. **Custom** (optional) — your own validator in the contract
+**Rule-based scoring (not “AI understands meaning”).** Rough weights:
 
-The headline `confidence` is a **weighted average of those scores** — useful for ranking and thresholds, not as a semantic similarity score.
+1. **Structure** (~40%) — required fields (and optional length checks)
+2. **Keywords** (~35%, adjusted if you add a custom rule) — listed words must appear as **substrings** (after lowercasing)
+3. **Forbidden** (~25%) — if a **regex** matches, the contract fails that path
+4. **Custom** (optional) — your own function for extra checks
 
-**Tuning knobs:**
-- `minKeywordMatchRatio` — lower = more lenient keyword layer
-- Assertion threshold on `result.confidence` — lower = fewer flaky tests
-- `forbiddenPatterns` — stricter guardrails (regex can be brittle; test them)
-- **Synonyms** — add alternate phrasings to `requiredIntentKeywords`, or use `customValidator` / external judges (below)
+The **`confidence`** number is a **blend of those checks**—for **pass/fail thresholds** and tuning, not a true “semantic similarity” score.
+
+**Tuning (for less flaky runs):**
+
+- Lower **`minKeywordMatchRatio`** — easier keyword pass
+- Lower the **assertion threshold** on `confidence` — fewer false failures
+- Tighten **`forbiddenPatterns`** — stricter “must not say” rules (test regexes carefully)
+- Add **synonyms** to keyword lists or use **`customValidator`** when wording varies a lot
 
 ### Heuristic matching: scope and limits
 
-| Approach | What this repo does | What would be “more semantic” |
-|----------|---------------------|--------------------------------|
-| Keyword list | Substring checks after lowercasing | LLM-as-judge, entailment models |
-| Confidence | Weighted heuristic blend | Calibrated metrics or judge scores |
-| Same meaning, different words | Can **fail** unless keywords or patterns cover both | Embeddings vs reference texts, synonym lists |
 
-**Possible upgrades (not implemented here):** call a second model to grade outputs against the contract; embed output and reference snippets and compare cosine similarity; use an NLP library for paraphrase / NLI. Those add latency, cost, and complexity — the heuristic matcher stays intentionally cheap and explicit.
+| Topic                      | This repo                                            | “Stronger” approaches (not built in)          |
+| -------------------------- | ---------------------------------------------------- | --------------------------------------------- |
+| Wording                    | Keyword **substring** checks                         | Second model as judge, specialized NLP models |
+| Score                      | Weighted **rules**                                   | Calibrated scores from another system         |
+| Same idea, different words | Can **fail** if keywords do not cover both phrasings | Embeddings, synonym lists, judges             |
+
+
+**Not included here on purpose:** a second LLM to grade answers, vector similarity, or heavy NLP—those add **cost**, **latency**, and **ops**. This matcher is meant to stay **simple and inspectable**.
 
 ### framework/BehaviorContract.ts
-Pre-built contracts for common task types. Each contract defines what "correct" means for that task type. The five contracts: SUMMARIZATION, API_ACTION, MULTI_STEP, SCOPE_BOUNDED, GRACEFUL_FAILURE.
+
+Ready-made **named rule sets** for typical tasks: **SUMMARIZATION**, **API_ACTION**, **MULTI_STEP**, **SCOPE_BOUNDED**, **GRACEFUL_FAILURE**.
 
 ### framework/AgentAssert.ts
-The public API. Core assertions (each returns a **`MatchResult`**):
 
-1. `toolWasInvoked(trace, toolName, paramMatchers?)` — was a tool called?
-2. `satisfiesContract(output, contract, minConfidence?)` — does output meet the contract?
-3. `boundaryNotViolated(trace, allowedTools)` — only allowed tools used?
-4. `traceFollowsSequence(trace, expectedSequence)` — correct execution order?
-5. `toolCallCountInRange(trace, min, max)` — reasonable number of tool calls?
+**Main API** for tests (each method returns a **`MatchResult`**):
+
+1. `toolWasInvoked(...)` — was this tool used (and optional argument checks)?
+2. `satisfiesContract(...)` — does the final output follow the contract?
+3. `boundaryNotViolated(...)` — only tools from this allow-list?
+4. `traceFollowsSequence(...)` — did steps happen in this order?
+5. `toolCallCountInRange(...)` — tool call count within min/max?
 
 Helpers:
 
-- `formatResult(result, debugHint?)` — pretty-print a `MatchResult` for logs or messages
-- `expectMatched(result, context)` / `expectNotMatched(result, context)` — thin wrappers around Playwright’s `expect` so failures include `formatResult` automatically
+- `formatResult(...)` — readable dump for logs or failure messages
+- `expectMatched` / `expectNotMatched` — Playwright-friendly helpers that attach **`formatResult`** on failure
 
 ---
 
 ### tests/env-llm.ts and `.env`
 
-Playwright loads **`tests/env-llm.ts`** from **`playwright.config.ts`** (`applyLlmVarsFromDotEnv()`). Selected keys from a project-root **`.env`** file are merged into `process.env` (`.env` wins over existing shell vars for those keys): `LLM_PROVIDER`, `LLM_MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OLLAMA_API_KEY`, `OLLAMA_BASE_URL`. Copy **`.env.example`** to **`.env`** and fill in keys so tests and IDE runs see the same configuration without exporting variables manually.
+**Local runs:** Copy **`.env.example`** to **`.env`** and set keys (provider, model, API keys, Ollama URL). Playwright loads these via **`tests/env-llm.ts`** so tests see the same settings as your IDE.
 
-**GitHub Actions CI** (`.github/workflows/ci.yml`) installs Ollama, pulls the configured model, and runs the smoke test. **Provider, model, and optional base URL** are read from repository **Variables** or **Secrets** (no code change):
+**GitHub Actions:** CI reads the same kind of values from repo **Settings → Secrets and variables → Actions** (no code edit needed). Workflow file: **`.github/workflows/ci.yml`**.
 
-| Name | Purpose |
-|------|--------|
-| `LLM_PROVIDER` | e.g. `ollama` |
-| `LLM_MODEL` | e.g. `llama3.2:3b` or `deepseek-v3.2:cloud` |
-| `OLLAMA_BASE_URL` | Optional; default `http://127.0.0.1:11434/v1` |
-| `OLLAMA_API_KEY` | **Repository secret** — required when `LLM_MODEL` is an Ollama **Cloud** tag (`*:cloud`). Without it, Ollama returns **HTTP 500**. [Create a key](https://ollama.com/settings/keys). |
 
-**Best practice:** put **non-sensitive** values under **Variables**. Use **Secrets** for **`OLLAMA_API_KEY`** and other keys. Storing `LLM_MODEL` as a *secret* works but **masks** it in logs—prefer **Variables** for model name unless needed. If neither Variable nor Secret is set for provider/model, CI defaults to **`ollama`** + **`llama3.2:3b`** (local, no key; stronger tool-calling than `1b`).
+| Variable / secret | What it’s for                                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `LLM_PROVIDER`    | Usually `ollama` in CI                                                                                                                           |
+| `LLM_MODEL`       | e.g. `llama3.2:3b` (local) or a `*:cloud` model                                                                                                  |
+| `OLLAMA_BASE_URL` | Optional; default `http://127.0.0.1:11434/v1`                                                                                                    |
+| `OLLAMA_API_KEY`  | **Secret** — needed only for **Ollama Cloud** models (`*:cloud`). Without it, you may see **HTTP 500**. [Keys](https://ollama.com/settings/keys) |
 
-**Run CI on a chosen branch:** **Actions** → **CI** → **Run workflow**. GitHub shows **Use workflow from** — that dropdown is the branch selector for manual runs (the workflow file and checkout use that branch unless you override). Optionally fill **Checkout ref** in the form to checkout a different branch or full ref (e.g. `refs/heads/feature/x`).
 
-**Local vs Cloud tags:** tags like `llama3.2:3b` run fully locally. Tags ending in **`:cloud`** need **`OLLAMA_API_KEY`** in Secrets. Override **`LLM_MODEL`** in Variables if you want another local model (e.g. newer builds when Ollama adds them).
+**Tip:** Put **non-secret** values in **Variables**; put **keys** in **Secrets**. If provider/model are unset in CI, defaults are **`ollama`** + **`llama3.2:3b`**.
+
+**Manual CI run:** **Actions → CI → Run workflow**. Use **Use workflow from** to pick the branch. Optional **Checkout ref** overrides which git ref is checked out.
+
+**Local vs Cloud model names:** Names like `llama3.2:3b` run on the runner. Names ending in **`*:cloud`** need **`OLLAMA_API_KEY`**.
 
 ---
 
 ### playwright.config.ts (high level)
 
-- **`retries: 1`** — each failed test runs one more time (LLM outputs vary)
-- **Timeouts:** default **45s**; **`behavioral`** project **120s** locally, **300s** when **`CI=true`** (e.g. GitHub Actions + Ollama on CPU); **`boundary`** **45s**
-- **`trace: 'off'`** — browser-style Playwright traces are disabled (this suite does not use a browser). Failures still get rich attachments from **`registerAgentTraceForDiagnostics`** in `tests/fixtures/setup.ts` (see below)
-- **`workers: 3`** — tune for your API rate limits
-- **HTML report `title`** — includes resolved LLM provider and model for quick scanning
+- **`retries: 1`** — one retry per failed test (helps with flaky LLM output)
+- **Timeouts:** **45s** default; **behavioral** tests **120s** locally, **300s** in CI (`CI=true`) because Ollama on CPU can be slow; **boundary** stays **45s**
+- **`trace: 'off'`** — no browser trace zip (these tests are not UI tests). Failures still get **attachments** from **`registerAgentTraceForDiagnostics`**
+- **`workers: 3`** — parallel runs (watch API rate limits)
+- **Report title** — shows which provider/model ran
 
 ### tests/fixtures/setup.ts
 
-Shared test factories (`createTestAgent`, `createFailingFileReaderAgent`, `createFileOnlyAgent`, etc.), fixture file paths (`FIXTURE_DIR` / `test-fixtures/`), and **`registerAgentTraceForDiagnostics`** — wires trace attachments into the Playwright report (see **Failure diagnostics** above).
+**Test helpers:** builds agents (`createTestAgent`, `createFailingFileReaderAgent`, …), test file paths, and **`registerAgentTraceForDiagnostics`** so traces show up in the HTML report when something fails.
 
 ---
 
 ## Setup & Running
 
 ### Prerequisites
-- Node.js 18+
-- An API key for cloud use, **or** a local [Ollama](https://ollama.com/) (or other OpenAI-compatible) server — see **Local Ollama** below
+
+- **Node.js 18+**
+- Either **API keys** for a cloud LLM **or** a local **[Ollama](https://ollama.com/)** install (free local models; see below)
 
 ### Install
+
 ```bash
 cd agent-assert   # or your clone folder name
 npm install
@@ -325,9 +395,9 @@ npx playwright install  # Playwright still expects browser binaries to be presen
 
 ### Configure API keys
 
-Prefer a **`.env`** file at the repo root (see **`.env.example`**). The same variables work if you `export` them in the shell.
+Use a **`.env`** file at the repo root (see **`.env.example`**), or `export` the same names in your terminal.
 
-**Anthropic (default)** — set the key and optionally pin the provider (default is `anthropic` if `LLM_PROVIDER` is unset):
+**Anthropic (default if unset)** — set the key; optionally set `LLM_PROVIDER=anthropic`:
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -335,7 +405,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export LLM_PROVIDER="anthropic"
 ```
 
-**OpenAI** — set the OpenAI key and select the provider. If you omit `LLM_MODEL`, the agent defaults to `gpt-4o`:
+**OpenAI** — set `OPENAI_API_KEY` and `LLM_PROVIDER=openai`. Default model is `gpt-4o` if you omit `LLM_MODEL`:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -344,7 +414,7 @@ export LLM_PROVIDER="openai"
 export LLM_MODEL="gpt-4o-mini"
 ```
 
-**Local Ollama** — no paid API key required; uses the OpenAI-compatible endpoint (`http://127.0.0.1:11434/v1` by default). Start Ollama, pull a model (e.g. `ollama pull qwen3.5`), then:
+**Local Ollama** — no cloud API key. Start Ollama, `ollama pull <model>`, then:
 
 ```bash
 export LLM_PROVIDER="ollama"
@@ -354,25 +424,27 @@ export LLM_MODEL="qwen3.5:latest"
 npx playwright test
 ```
 
-Alternatively, keep `LLM_PROVIDER=openai` and point at Ollama with **`OPENAI_BASE_URL`** only (do not rely on `OLLAMA_BASE_URL` for this provider).
+Or use `LLM_PROVIDER=openai` with **`OPENAI_BASE_URL`** pointing at Ollama (do not depend on **`OLLAMA_BASE_URL`** for that mode).
 
-You can also pass `provider`, `apiKey`, `baseURL`, and `model` when constructing `Agent` in code instead of using environment variables.
+You can also set `provider`, `apiKey`, `baseURL`, and `model` in code when creating the `Agent`.
 
 ### Failure diagnostics (HTML report)
 
-Tests that call **`registerAgentTraceForDiagnostics(testInfo, trace)`** attach:
+When tests use **`registerAgentTraceForDiagnostics`**, the report can include:
 
-- **`agent-run-summary.txt`** — every run (provider, model, tool order, output preview)
-- On failure: **`agent-diagnostics.txt`** (full trace dump) and **`playwright-failure.txt`** (Playwright error context)
+- **`agent-run-summary.txt`** — every run: provider, model, tools used, output snippet
+- On failure: **`agent-diagnostics.txt`** (full trace) and **`playwright-failure.txt`**
 
-Open the **Attachments** tab in the HTML report for the failing test.
+Open the failing test → **Attachments** in the Playwright HTML report.
 
 ### Run All Tests
+
 ```bash
 npx playwright test
 ```
 
 ### Run Specific Pattern
+
 ```bash
 npx playwright test tests/behavioral/intent-routing.spec.ts
 npx playwright test tests/boundary/
@@ -381,6 +453,7 @@ npx playwright test --project=boundary
 ```
 
 ### View HTML Report
+
 ```bash
 npx playwright show-report
 ```
@@ -390,97 +463,99 @@ npx playwright show-report
 ## How to Extend
 
 ### Add a New Tool
-1. Create `examples/agent/tools/your-tool.ts` following the same factory pattern as `file-reader.ts`
-2. Register it in the ToolRegistry in your test setup
-3. Add mock responses in `setup.ts`
-4. Write tests using `AgentAssert.toolWasInvoked(trace, 'your-tool')`
+
+1. Add `examples/agent/tools/your-tool.ts` (same style as `file-reader.ts`)
+2. **Register** it on the ToolRegistry in test setup
+3. Add any **mock data** in `setup.ts` if needed
+4. Write tests with `AgentAssert.toolWasInvoked(trace, 'your-tool')`
 
 ### Add a New Contract
-1. Add a new static property to `BehaviorContract.ts`
-2. Define requiredFields, requiredIntentKeywords, forbiddenPatterns
-3. Set minKeywordMatchRatio (start with 0.2, tune from there)
-4. Add a customValidator if you need logic beyond keywords/patterns
-5. Write a test that asserts against your new contract
+
+1. Add a new entry in `BehaviorContract.ts`
+2. Set **required fields**, **keywords**, **forbidden patterns**
+3. Set **`minKeywordMatchRatio`** (try ~0.2, then tune)
+4. Optional: **`customValidator`** for rules keywords cannot express
+5. Add a test that calls `satisfiesContract` with your contract
 
 ### Add a New Assertion Method
-1. Add a static method to `AgentAssert.ts`
-2. Accept `AgentTrace` or `AgentOutput` as input
-3. Return `MatchResult`
-4. Use `HeuristicContractMatcher` methods internally if needed
-5. Include detailed reasons in the `details` array
 
-### Adapt for Another LLM Provider (beyond Anthropic, OpenAI, and Ollama)
-1. Add a branch in `examples/agent/agent.ts` alongside the existing Anthropic and OpenAI-compatible loops
-2. Add a `toYourProviderTools()` (or equivalent) on `ToolRegistry` if the tool schema differs
-3. Map that provider’s tool-call and tool-result messages into the same `TraceStep` shapes the framework already expects
-4. The framework layer (AgentAssert, HeuristicContractMatcher, BehaviorContract) stays UNCHANGED — it operates on `AgentTrace`, which is provider-agnostic
+1. Add a static method on `AgentAssert.ts`
+2. Input: **`AgentTrace`** or **`AgentOutput`**
+3. Return: **`MatchResult`**
+4. Reuse `HeuristicContractMatcher` where it fits
+5. Put clear **reason strings** in `details` for failures
+
+### Another LLM Provider (not Anthropic / OpenAI / Ollama)
+
+1. Add a new code path in `examples/agent/agent.ts` for that API
+2. If tool JSON differs, add a converter (like `toOpenAITools`) on `ToolRegistry`
+3. Map responses into the same **`TraceStep`** shapes as today
+4. **`framework/`** can stay the same—it only reads **`AgentTrace`**
 
 ### Connect to a Real MCP Server
-1. Replace the `execute` function in your tool with MCP client calls
-2. Use `@modelcontextprotocol/sdk` for the transport layer
-3. Keep the same `inputSchema` — MCP and Anthropic tool schemas are aligned by design
-4. Update mock configurations in test setup to toggle between mock and live modes
+
+1. In each tool, replace local `execute` with **MCP client** calls
+2. Optional: `@modelcontextprotocol/sdk` for transport
+3. Keep **`inputSchema`** stable where possible
+4. In tests, switch **mock vs live** in `setup.ts`
 
 ---
 
 ## Why Playwright (Not Jest or Vitest)
 
-| Feature | Jest/Vitest | Playwright |
-|---------|------------|------------|
-| Parallel isolation | Shared process | Separate worker processes |
-| Built-in retries | Manual config | `retries: 1` in this project’s config |
-| HTML reports | Needs plugin | Built in |
-| Timeout granularity | Per-suite | Per-test, per-suite, global |
-| Trace capture | None | This suite uses `trace: 'off'` + custom attachments on failure |
-| Future browser testing | Separate framework | Same framework |
-| Fixture system | beforeEach | test.extend() with typed fixtures |
 
-The deliberate choice of Playwright for non-browser testing is itself a publishable insight for the article.
+|                           | Jest / Vitest      | Playwright (this repo)                          |
+| ------------------------- | ------------------ | ----------------------------------------------- |
+| Isolation                 | Often one process  | **Workers** (separate processes)                |
+| Retries                   | Extra setup        | **`retries: 1`** built in                       |
+| HTML report               | Add-on             | **Built in**                                    |
+| Timeouts                  | Mostly suite-level | **Per test** + suite + global                   |
+| This project              | —                  | Custom **attachments** on failure (agent trace) |
+| Later: real browser tests | Another tool       | **Same** Playwright                             |
+
+
+Using Playwright without a browser is intentional: **reports, retries, and timeouts** fit long, flaky LLM runs well.
 
 ---
 
 ## Cost Awareness
 
-Each test run calls a real LLM API. Costs depend on provider and model.
+Cloud LLM calls **cost money** per run. **Local Ollama** costs $0 but uses CPU/time.
 
-**Anthropic** — with `claude-sonnet-4-20250514` (order-of-magnitude; varies by prompt length):
-- Simple tests (1 tool call): ~$0.01-0.03 per run
-- Multi-step tests (2+ tool calls): ~$0.03-0.08 per run
-- Full suite (**25** tests × 1 run): scale the above by test mix
-- Full suite with Playwright retries (**25** tests × up to **2** attempts each when flaky): up to ~2× the single-run cost
+**Rough idea (Anthropic, example model):** small tests ~**$0.01–0.03** per run; multi-tool tests a bit more. **Full suite** scales with how many tests run and whether **retries** fire (up to about **2×** if every test retries once).
 
-**OpenAI** — pricing follows [OpenAI’s current rates](https://openai.com/pricing) for the model you set (e.g. `gpt-4o`, `gpt-4o-mini`).
+**OpenAI:** See [OpenAI pricing](https://openai.com/pricing) for your model.
 
-**To reduce costs during development:**
-- Use a smaller/cheaper model (`claude-haiku`, `gpt-4o-mini`, etc.) via `AgentConfig.model` or `LLM_MODEL`
-- Run individual test files, not the full suite
-- Keep `maxToolRounds` low (default 10 is already conservative)
+**Save money while developing:**
+
+- Use **cheaper / smaller** models (`LLM_MODEL`, or `Agent` config)
+- Run **one file** or one test, not the whole suite
+- **`maxToolRounds`** is already capped (default 10)
 
 ---
 
 ## Troubleshooting
 
-**Tests timeout (behavioral tests: 120s local, 300s on CI):**
-LLM APIs and local Ollama on CPU can be slow (especially in GitHub Actions — first inference after `ollama pull` can take minutes). The **`behavioral`** project uses a longer cap when **`CI=true`**. You can raise `behavioralTimeoutMs` in `playwright.config.ts` if needed. For Ollama in CI, ensure the model is pulled before tests and the runner has enough RAM.
+**Timeouts (behavioral tests — 120s local, 300s on CI):**  
+Cloud APIs and **Ollama on CPU** (especially in GitHub Actions) can be **slow**. CI already uses a **longer** timeout. If needed, increase **`behavioralTimeoutMs`** in `playwright.config.ts`. In CI, confirm **`ollama pull`** finished and the runner has **enough RAM**.
 
-**Tests are flaky (pass sometimes, fail sometimes):**
-This is expected with LLM testing. Three strategies:
-1. Lower `minKeywordMatchRatio` in the contract
-2. Add more keywords to the contract
-3. Lower the confidence threshold in the assertion
-4. Playwright’s `retries: 1` handles transient variation
+**Flaky pass/fail:**  
+Normal for LLMs. Try: relax **`minKeywordMatchRatio`**, add **keywords**, lower the **confidence** threshold, rely on **`retries: 1`**.
 
-**Wrong provider or API URL (401 / unexpected host):**  
-Confirm `LLM_PROVIDER` matches the key you set. For `openai`, set **`OPENAI_BASE_URL`** for a custom endpoint; **`OLLAMA_BASE_URL` is not read** for that provider. Use **`LLM_PROVIDER=ollama`** with Ollama’s `/v1` base if you intend local Ollama.
+**401 / wrong host:**  
+Match **`LLM_PROVIDER`** to the key you use. For **`openai`**, custom bases use **`OPENAI_BASE_URL`** (not `OLLAMA_BASE_URL`). For **local Ollama**, use **`LLM_PROVIDER=ollama`** and the Ollama `/v1` URL.
 
-**Ollama `500` / `internal service error` with `*:cloud` models:**  
-Cloud-tagged models may require an Ollama Cloud API key; use a **local** model tag for the same behavior without keys, or set optional **`OLLAMA_API_KEY`**.
+**Ollama 500 with `*:cloud` models:**  
+Set **`OLLAMA_API_KEY`**, or use a **local** model name without `:cloud`.
 
-**Agent output is not JSON:**
-The system prompt tells Claude to respond in JSON, but it sometimes wraps it in markdown fences. The `parseOutput()` method in `agent.ts` handles this. If you see `taskType: "unknown"`, the JSON parsing failed entirely — check the raw text in the trace.
+**Ollama 400 — “does not support tools”:**  
+Pick a model that supports **tool calling** (see [Ollama models with Tools](https://ollama.com/search?c=tools)). Reasoning-only models (e.g. some **`deepseek-r1`** tags) may fail here.
 
-**File-reader returns "access denied":**
-Path traversal protection. The file path must be within the configured `basePath`. Check that `FIXTURE_DIR` resolves correctly.
+**Output not JSON / `taskType: "unknown"`:**  
+The demo expects JSON; the parser in **`examples/agent/agent.ts`** strips common markdown fences. If it still fails, inspect **raw text** in the trace attachment.
 
-**"Tool X is not registered" error in trace:**
-The agent tried to call a tool that wasn't in the ToolRegistry. This is actually a valid test finding — it means the agent hallucinated a tool call. Check the `boundaryNotViolated` assertion.
+**File-reader "access denied":**  
+Paths must stay under the allowed folder (**path safety**). Check **`FIXTURE_DIR`** and paths in the test.
+
+**"Tool X is not registered":**  
+The model asked for a tool that **was not registered**—often a **hallucinated** tool name. Relevant checks: **`boundaryNotViolated`**, allow-lists in setup.
